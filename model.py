@@ -18,7 +18,8 @@ class WorkingQueue:
 
     def find_match(self, user_id) -> int | None:
         for uid in self.user_ids_in_queue:
-            if uid != user_id: return uid
+            if uid != user_id:
+                return uid
         return None
 
     def add_user(self, user: User):

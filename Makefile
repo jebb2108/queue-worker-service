@@ -1,8 +1,8 @@
 test:
-	pytest --tb=short
+	PYTHONPATH=. pytest --tb=short
 
 watch-tests:
-	ls *.py | entr pytest --tb=short
+	PYTHONPATH=. find . -name '*.py' | entr -n pytest --tb=short
 
 black:
 	black -l 86 $$(find * -name '*.py')
