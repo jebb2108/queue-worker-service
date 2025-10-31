@@ -9,7 +9,7 @@ load_dotenv(""".env""")
 @dataclass
 class RedisConfig:
     """Конфигурация Redis"""
-    url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    url: str = "redis://localhost:6379/0"
     max_connections: int = 20
     retry_on_timeout: bool = True
     socket_timeout: int = 5
@@ -19,7 +19,7 @@ class RedisConfig:
 @dataclass
 class DatabaseConfig:
     """Конфигурация PostgresSQL"""
-    url: str = os.getenv("POSTGRES_DATABASE_URL")
+    url: str = "postgresql://"
     min_size: int = 5
     max_size: int = 20
     timeout: int = 60
@@ -43,4 +43,4 @@ class WorkerConfig:
 
 
 
-config = WorkerConfig
+config = WorkerConfig()

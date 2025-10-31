@@ -5,12 +5,12 @@ import asyncpg
 import redis
 from redis.asyncio import Redis as aioredis
 
-from application.interfaces import (
+from .application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
 )
-from application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
-from config import config
-from infrastructure.repositories import (
+from .application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
+from .config import config
+from .infrastructure.repositories import (
     RedisUserRepository, DatabaseMatchRepository, MemoryStateRepository
 )
 
@@ -64,10 +64,10 @@ class ServiceContainer:
         implementation, is_singleton = self._services[interface]
         if is_singleton:
             if interface not in self._singletons:
-                self._singletons[interface] = await self._create_instance(interface)
-            return self._singletons[implementation]
-
-        return await self._create_instance(implementation)
+                self._singletons[interface] = await self._create_instance(implementation)
+            return self._singletons[interface]
+        else:
+            return await self._create_instance(implementation)
 
 
     async def _create_instance(self, implementation: Type):
@@ -149,7 +149,7 @@ class ServiceContainer:
 
         # Закрыть соединения
         if redis.Redis in self._singletons:
-            await self._singletons[redis.Redis].close()
+            await self._singletons[redis.Redis].aclose()
         if asyncpg.Pool in self._singletons:
             await self._singletons[asyncpg.Pool].close()
 
@@ -218,4 +218,4 @@ async def get_match_repository() -> AbstractMatchRepository:
 async def get_state_repository() -> AbstractStateRepository:
     """ Получить репозиторий состояний"""
     container = await get_container()
-    return await container.get(AbstractUserRepository)
+    return await container.get(AbstractStateRepository)
