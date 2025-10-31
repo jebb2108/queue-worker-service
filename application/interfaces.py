@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 
-from ..domain.entities import User
+from domain.entities import User
 
 
 class AbstractUserRepository(ABC):

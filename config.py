@@ -8,7 +8,7 @@ load_dotenv(""".env""")
 
 @dataclass
 class RedisConfig:
-    """Конфигурация Redis"""
+    """ Конфигурация Redis """
     url: str = "redis://localhost:6379/0"
     max_connections: int = 20
     retry_on_timeout: bool = True
@@ -18,12 +18,21 @@ class RedisConfig:
 
 @dataclass
 class DatabaseConfig:
-    """Конфигурация PostgresSQL"""
+    """ Конфигурация PostgresSQL """
     url: str = "postgresql://"
     min_size: int = 5
     max_size: int = 20
     timeout: int = 60
     command_timeout: int = 30
+
+
+@dataclass
+class RabbitMQConfig:
+    """ Конфигурация RabbitMQ """
+    url: str = "amqp://"
+
+    # Очереди
+    match_queue: str =  "match_requests"
 
 @dataclass
 class WorkerConfig:
@@ -35,11 +44,13 @@ class WorkerConfig:
     # Конфигурации компонентов
     redis: RedisConfig = None
     database: DatabaseConfig = None
+    rabbitmq: RabbitMQConfig = None
 
 
     def __post_init__(self):
         if self.redis is None: self.redis = RedisConfig()
         if self.database is None: self.database = DatabaseConfig()
+        if self.rabbitmq is None: self.rabbitmq = RabbitMQConfig()
 
 
 

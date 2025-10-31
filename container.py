@@ -5,12 +5,12 @@ import asyncpg
 import redis
 from redis.asyncio import Redis as aioredis
 
-from .application.interfaces import (
+from application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
 )
-from .application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
-from .config import config
-from .infrastructure.repositories import (
+from application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
+from config import config
+from infrastructure.repositories import (
     RedisUserRepository, DatabaseMatchRepository, MemoryStateRepository
 )
 

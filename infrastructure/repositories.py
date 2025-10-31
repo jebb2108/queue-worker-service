@@ -3,8 +3,8 @@ from typing import List, Optional, Dict, Any
 
 from redis.asyncio import Redis as aioredis
 
-from ..domain.entities import User
-from ..application.interfaces import (
+from domain.entities import User
+from application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
 )
 
