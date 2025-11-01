@@ -57,6 +57,7 @@ class RabbitMQConfig:
 
     # Очереди
     match_queue: str =  "match_requests"
+    match_exchange: str = "users"
 
 @dataclass
 class WorkerConfig:

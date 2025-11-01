@@ -14,7 +14,7 @@ from src.infrastructure.repositories import (
     RedisUserRepository, MemoryStateRepository, PostgresSQLMatchRepository
 )
 
-from src.infrastructure.services import RabbitMQMessagePublisher
+from src.infrastructure.services import RabbitMQMessagePublisher, CurcuitBreaker, RateLimiter
 
 
 class ServiceNotRegisteredError(Exception):
@@ -143,6 +143,10 @@ class ServiceContainer:
 
         # Infrastructure services
         self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)
+
+        # # Utility services
+        self.register_singleton(CurcuitBreaker, CurcuitBreaker)
+        self.register_singleton(RateLimiter, RateLimiter)
 
         # Use cases
         self.register_transient(FindMatchUseCase, FindMatchUseCase)

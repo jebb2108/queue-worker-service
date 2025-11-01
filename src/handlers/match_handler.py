@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import Dict, Any
 
 from faststream.rabbit.message import RabbitMessage
@@ -33,7 +32,9 @@ class MatchRequestHandler:
                 return await msg.ack()
 
             # Проверка на задержку времени
-            if not await self.rate_limiter.is_allowed():
+            if not await self.rate_limiter.is_allowed(
+                    key=f'user_{data.get('user_id', 0)}'
+            ):
                 await msg.nack()
                 return
 
@@ -46,7 +47,7 @@ class MatchRequestHandler:
                 return
 
             # Безопасная обработка запроса с прерыванием циклического замыкания
-            success = self.curcuit_breaker.call(
+            success = await self.curcuit_breaker.call(
                 self._process_request_safely, match_request
             )
 
@@ -61,8 +62,8 @@ class MatchRequestHandler:
             logger.critical(f"Critical error processing match request: {e}")
             await msg.nack()
 
-    async def _process_request_safely(self):
-        pass
+    async def _process_request_safely(self, match_request: MatchRequest):
+        return await self.process_match_use_case.execute(match_request)
 
     @staticmethod
     def _validate_message(message: Dict[str, Any]) -> bool:
