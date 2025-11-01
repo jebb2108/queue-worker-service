@@ -4,7 +4,7 @@ from datetime import timezone, timedelta
 
 from dotenv import load_dotenv
 
-load_dotenv(""".env""")
+load_dotenv("""../.env""")
 
 @dataclass
 class RedisConfig:

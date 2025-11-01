@@ -52,7 +52,7 @@ class WorkerService:
         """ Создать обработчики сообщений """
 
         # Получаем use_cases из контейнера
-        from application.use_cases import ProcessMatchRequestUseCase
+        from src.application.use_cases import ProcessMatchRequestUseCase
 
         process_match_request_usecase = await self.container.get(ProcessMatchRequestUseCase)
 

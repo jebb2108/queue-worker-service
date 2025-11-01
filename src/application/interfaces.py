@@ -1,51 +1,55 @@
-from abc import ABC
-from typing import List, Optional, Dict, Any
+from abc import ABC, abstractmethod
+from typing import Optional, List, Dict, Any
 
-from redis.asyncio import Redis as aioredis
-
-from domain.entities import User
-from application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
-)
-
-redis_client = aioredis.from_url("redis://", decode=True)
+from src.domain.entities import User
 
 
-class RedisUserRepository(AbstractUserRepository, ABC):
+class AbstractUserRepository(ABC):
+    """Интерфейс репозитория пользователей"""
+
+    @abstractmethod
     async def save(self, user: User) -> None:
         """Сохранить пользователя"""
         pass
 
+    @abstractmethod
     async def find_by_id(self, user_id: int) -> Optional[User]:
         """Найти пользователя по ID"""
         pass
 
+    @abstractmethod
     async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
         """Найти совместимых пользователей"""
         pass
 
+    @abstractmethod
     async def add_to_queue(self, user: User) -> None:
         """Добавить пользователя в очередь поиска"""
         pass
 
+    @abstractmethod
     async def remove_from_queue(self, user_id: int) -> None:
         """Удалить пользователя из очереди"""
         pass
 
+    @abstractmethod
     async def get_queue_size(self) -> int:
         """Получить размер очереди"""
         pass
 
+    @abstractmethod
     async def update_user_criteria(self, user_id: int, criteria: Dict[str, Any]) -> None:
         """Обновить критерии пользователя"""
         pass
 
-class DatabaseMatchRepository(AbstractMatchRepository, ABC):
+
+class AbstractMatchRepository(ABC):
     pass
 
-class MemoryStateRepository(AbstractStateRepository, ABC):
+
+class AbstractStateRepository(ABC):
     pass
 
 
-
-
+class AbstractMessagePublisher(ABC):
+    pass

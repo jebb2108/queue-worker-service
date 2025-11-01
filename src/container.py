@@ -5,14 +5,16 @@ import asyncpg
 import redis
 from redis.asyncio import Redis as aioredis
 
-from application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
+from src.application.interfaces import (
+    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher
 )
-from application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
-from config import config
-from infrastructure.repositories import (
+from src.application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
+from src.config import config
+from src.infrastructure.repositories import (
     RedisUserRepository, DatabaseMatchRepository, MemoryStateRepository
 )
+
+from src.infrastructure.services import RabbitMQMessagePublisher
 
 
 class ServiceNotRegisteredError(Exception):
@@ -138,6 +140,9 @@ class ServiceContainer:
         self.register_singleton(AbstractUserRepository, RedisUserRepository)
         self.register_singleton(AbstractMatchRepository, DatabaseMatchRepository)
         self.register_singleton(AbstractStateRepository, MemoryStateRepository)
+
+        # Infrastructure services
+        self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)
 
         # Use cases
         self.register_transient(FindMatchUseCase, FindMatchUseCase)
