@@ -27,6 +27,7 @@ class MatchRequestHandler:
         """ Обрабатывать сообщения с запросом на матчинг """
 
         try:
+            # await msg.ack()
             # Валидация входящих данных
             if not self._validate_message(data):
                 return await msg.ack()
@@ -63,7 +64,7 @@ class MatchRequestHandler:
             await msg.nack()
 
     async def _process_request_safely(self, match_request: MatchRequest):
-        return await self.process_match_use_case.execute(match_request)
+        await self.process_match_use_case.execute(match_request)
 
     @staticmethod
     def _validate_message(message: Dict[str, Any]) -> bool:

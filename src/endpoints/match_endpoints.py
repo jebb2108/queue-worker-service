@@ -5,7 +5,11 @@ from pydantic import BaseModel
 from typing import Dict, Any
 import time
 
+from src.application.interfaces import AbstractUserRepository
+from src.container import get_user_repository
+from src.domain.entities import User
 from src.domain.value_objects import MatchRequest
+from src.infrastructure.repositories import RedisUserRepository
 from src.infrastructure.services import RabbitMQMessagePublisher
 from src.config import config
 
@@ -14,7 +18,8 @@ router = APIRouter()
 @router.post("/match")
 async def submit_match_request(
     request_data: dict,
-    publisher: RabbitMQMessagePublisher = Depends(lambda: RabbitMQMessagePublisher())
+    publisher: RabbitMQMessagePublisher = Depends(lambda: RabbitMQMessagePublisher()),
+    redis_client: AbstractUserRepository = Depends(get_user_repository)
 ) -> Dict[str, str]:
     """
     Принять запрос на поиск матча и отправить в очередь
@@ -27,9 +32,12 @@ async def submit_match_request(
             'gender': request_data.get('gender'),
             'criteria': request_data.get('criteria'),
             'lang_code': request_data.get('lang_code'),
-            'created_at': datetime.now().isoformat(),
+            'created_at': datetime.now(tz=config.timezone).isoformat(),
             'status': config.SEARCH_STARTED
         }
+
+        redis_repo = await get_user_repository()
+        await redis_repo.save(User.from_dict(request_data))
 
         # Отправить в очередь
         await publisher.publish_match_request(MatchRequest.from_dict(match_request))

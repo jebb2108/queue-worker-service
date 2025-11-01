@@ -5,7 +5,7 @@ from typing import Optional
 
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
-from faststream.rabbit.message import RabbitMessage
+from faststream.rabbit.annotations import RabbitMessage
 
 from config import config
 from container import get_container, cleanup_container

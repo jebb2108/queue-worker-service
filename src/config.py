@@ -72,6 +72,8 @@ class WorkerConfig:
     rabbitmq: RabbitMQConfig = None
     matching: MatchingConfig = None
 
+    cache_ttl: int = 300 # в секундах
+
     # Статусы поиска
     SEARCH_STARTED: str = 'search_started'
     SEARCH_CANCELED: str = 'search_canceled'

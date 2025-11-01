@@ -118,7 +118,7 @@ class ServiceContainer:
             retry_on_timeout=config.redis.retry_on_timeout,
             socket_timeout=config.redis.socket_timeout,
             socket_connect_timeout=config.redis.socket_connect_timeout,
-            decode=True
+            decode_responses=True
         )
         self.register_instance(redis.Redis, redis_client)
 

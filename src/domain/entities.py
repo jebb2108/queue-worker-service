@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
+from src.config import config
 from src.domain.exceptions import IncompatibleUsersException
 from src.domain.value_objects import MatchCriteria, UserStatus, CompatibilityScore
 
@@ -125,7 +126,7 @@ class User:
             criteria=criteria,
             gender=data['gender'],
             lang_code=data['lang_code'],
-            created_at=datetime.fromisoformat(data['created_at'].replace('Z', '+00:00')),
+            created_at=datetime.now(tz=config.timezone),
             status=UserStatus(data.get('status', 'waiting'))
         )
 
@@ -168,7 +169,7 @@ class Match:
             user2=user2,
             room_id=str(uuid4()),
             compatibility_score=compatibility_score,
-            created_at=datetime.now()
+            created_at=datetime.now(tz=config.timezone)
         )
 
     def get_partner(self, user_id: int) -> Optional[User]:

@@ -107,8 +107,8 @@ class MatchRequest:
             gender=data['gender'],
             lang_code=data['lang_code'],
             status=data.get('status', 'search_started'),
-            created_at=datetime.fromisoformat(data['created_at'].replace('Z', '+00:00')),
-            current_time=datetime.fromisoformat(data.get('current_time', data['created_at']).replace('Z', '+00:00')),
+            created_at=datetime.fromisoformat(data['created_at']),
+            current_time=datetime.fromisoformat(data.get('current_time', data['created_at'])),
             source=data.get('source', 'worker_service'),
             retry_count=data.get('retry_count', 0)
         )

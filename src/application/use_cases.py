@@ -140,14 +140,14 @@ class ProcessMatchRequestUseCase:
                 return True
 
             # поаытаться найти матч
-            match = self.find_match_use_case.execute(request.user_id)
+            match = await self.find_match_use_case.execute(request.user_id)
 
             if match:
                 #  Матч найден, обработка завершена
                 return True
 
             # Матч не найден, проверить лимиты и запланировать повтор
-            return self._handle_no_match(request)
+            return await self._handle_no_match(request)
 
         except Exception as e:
             # В случае ошибки отправляем в dead letter queue
@@ -250,7 +250,7 @@ class ProcessMatchRequestUseCase:
             lang_code=request.lang_code,
             status=request.status,
             created_at=request.created_at,
-            current_time=datetime.now(),
+            current_time=datetime.now(tz=config.timezone),
             source=request.source,
             retry_count=request.retry_count + 1
         )
