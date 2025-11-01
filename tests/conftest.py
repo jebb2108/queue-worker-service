@@ -1,8 +1,11 @@
 import pytest
 
-from src.application.use_cases import ProcessMatchRequestUseCase
-from src.container import ServiceContainer, ServiceFactory
+from src.application.use_cases import ProcessMatchRequestUseCase, FindMatchUseCase
+from src.container import ServiceContainer, ServiceFactory, get_container
 from src.handlers.match_handler import MatchRequestHandler
+from src.infrastructure.repositories import DatabaseMatchRepository, RedisUserRepository, PostgresSQLMatchRepository, \
+    MemoryStateRepository
+from src.infrastructure.services import RabbitMQMessagePublisher
 
 
 @pytest.fixture
@@ -25,5 +28,10 @@ async def factory():
 
 
 @pytest.fixture
-def message_handler():
-    return MatchRequestHandler(ProcessMatchRequestUseCase())
+async def message_handler():
+    # return MatchRequestHandler(ProcessMatchRequestUseCase())
+    container = await get_container()
+    process_match_request_use_case = await container.get(ProcessMatchRequestUseCase)
+    return MatchRequestHandler(process_match_request_use_case)
+
+

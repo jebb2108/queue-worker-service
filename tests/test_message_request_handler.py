@@ -1,16 +1,11 @@
 from datetime import datetime
 
-import pytest
-
-from src.application.use_cases import ProcessMatchRequestUseCase
 from src.domain.value_objects import MatchRequest
-from src.handlers.match_handler import MatchRequestHandler
 
 
-def test_message_validator_with_empty_message_data():
-    msg_hadler = MatchRequestHandler(ProcessMatchRequestUseCase())
+def test_message_validator_with_empty_message_data(message_handler):
     msg_data = {}
-    success = msg_hadler._validate_message(msg_data)
+    success = message_handler._validate_message(msg_data)
     assert success is False
 
 

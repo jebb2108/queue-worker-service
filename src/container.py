@@ -11,7 +11,7 @@ from src.application.interfaces import (
 from src.application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
 from src.config import config
 from src.infrastructure.repositories import (
-    RedisUserRepository, DatabaseMatchRepository, MemoryStateRepository
+    RedisUserRepository, MemoryStateRepository, PostgresSQLMatchRepository
 )
 
 from src.infrastructure.services import RabbitMQMessagePublisher
@@ -138,7 +138,7 @@ class ServiceContainer:
 
         # Repositories
         self.register_singleton(AbstractUserRepository, RedisUserRepository)
-        self.register_singleton(AbstractMatchRepository, DatabaseMatchRepository)
+        self.register_singleton(AbstractMatchRepository, PostgresSQLMatchRepository)
         self.register_singleton(AbstractStateRepository, MemoryStateRepository)
 
         # Infrastructure services

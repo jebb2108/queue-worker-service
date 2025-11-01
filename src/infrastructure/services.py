@@ -1,3 +1,6 @@
+from src.domain.value_objects import MatchRequest
+
+
 class RateLimiter:
 
     @staticmethod
@@ -14,4 +17,8 @@ class CurcuitBreaker:
 
 class RabbitMQMessagePublisher:
 
-    pass
+    async def publish_to_dead_letter(self, data: MatchRequest, err_msg: str):
+        pass
+
+    async def publish_match_request(self, data: MatchRequest, delay: float = 0.0):
+        pass

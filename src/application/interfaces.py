@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 
 from src.domain.entities import User
+from src.domain.value_objects import UserState, MatchRequest
 
 
 class AbstractUserRepository(ABC):
@@ -48,8 +49,26 @@ class AbstractMatchRepository(ABC):
 
 
 class AbstractStateRepository(ABC):
-    pass
+
+    @abstractmethod
+    async def save_state(self, state: UserState) -> None:
+        pass
+
+    @abstractmethod
+    async def get_state(self, user_id: int) -> Optional[UserState]:
+        pass
+
+    @abstractmethod
+    async def delete_state(self, user_id: int) -> None:
+        pass
 
 
 class AbstractMessagePublisher(ABC):
-    pass
+
+   @abstractmethod
+   async def publish_to_dead_letter(self, data: MatchRequest, err_msg: str):
+       pass
+
+   @abstractmethod
+   async def publish_match_request(self, data: MatchRequest, delay: float = 0.0):
+       pass

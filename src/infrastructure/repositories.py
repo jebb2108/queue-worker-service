@@ -3,12 +3,14 @@ import time
 from abc import ABC
 from asyncio import sleep, CancelledError
 from collections import deque
-from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 
+import asyncpg
 from redis.asyncio import Redis as aioredis
 
-from src.domain.entities import User
+from src.config import config
+from src.domain.entities import User, Match
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
 )
@@ -154,6 +156,75 @@ class MemoryStateRepository(AbstractStateRepository, ABC):
         """Остановить фоновую задачу при удалении объекта"""
         if self.cleanup_task and not self.cleanup_task.done():
             self.cleanup_task.cancel()
+
+
+class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
+    """ Реализация репозитория матчей на PostgreSQL """
+
+    def __init__(self):
+        self.pool = asyncpg.create_pool(dsn=config.database.url)
+
+    @asynccontextmanager
+    async def get_connection(self):
+        """ Получить соединение с базой данных """
+        conn = await self.pool.acquire()
+        try:
+            yield conn
+        finally:
+            await self.pool.release(conn)
+
+    async def save(self, match: Match) -> None:
+        """ Сохранить матч в базу данных """
+        async with self.get_connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO match_sessions 
+                (session_id, user1_id, user2_id, room_id, compatibility_score, created_at, status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                match.match_id,
+                match.user1.user_id,
+                match.user2.user_id,
+                match.room_id,
+                match.compatibility_score,
+                match.created_at,
+                match.status
+            )
+
+    async def find_by_id(self, match_id: str) -> Optional[Match]:
+        """ Найти матч по ID """
+        async with self.get_connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM match_sessions WHERE session_id = $1",
+                match_id
+            )
+
+            if not row:
+                return None
+
+            return None # TODO: Дописать результат функции
+
+    async def find_by_user_id(self, user_id: int) -> List[Match]:
+        """ Найти матчи пользователя """
+        async with self.get_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM match_sessions 
+                WHERE user1_id = $1 OR user2_id = $1
+                ORDER BY created_at DESC
+                """,
+                user_id
+            )
+
+            return [] # TODO: Дописать результат функции
+
+    async def update_status(self, match_id: str, status: str) -> None:
+        """ бновить статус матча """
+        async with self.get_connection() as conn:
+            await conn.execute(
+                "UPDATE match_sessions SET status = $1 WHERE session_id = $2",
+                status, match_id
+            )
 
 
 

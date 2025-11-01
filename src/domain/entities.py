@@ -194,3 +194,18 @@ class Match:
             'created_at': self.created_at.isoformat(),
             'status': self.status
         }
+
+
+@dataclass
+class ScoredCandidate:
+    """Кандидат с оценкой совместимости"""
+    candidate: User
+    score: CompatibilityScore
+
+    def __lt__(self, other: 'ScoredCandidate') -> bool:
+        """Сравнение для сортировки по скору"""
+        return self.score.total_score < other.score.total_score
+
+    def __gt__(self, other: 'ScoredCandidate') -> bool:
+        """Сравнение для сортировки по скору"""
+        return self.score.total_score > other.score.total_score
