@@ -11,7 +11,6 @@ from src.config import config
 from src.domain.entities import Match, User, ScoredCandidate
 from src.domain.exceptions import UserNotFoundException, MatchingException
 from src.domain.value_objects import MatchRequest, UserStatus, UserState
-from src.infrastructure.services import RabbitMQMessagePublisher
 
 logger = logging.getLogger(name='use cases')
 
@@ -202,7 +201,7 @@ class ProcessMatchRequestUseCase:
         """Запланировать повторную обработку"""
         if delay is None:
             elapsed = datetime.now(tz=config.timezone) - request.created_at
-            delay = config.matching.initial_delay - elapsed.total_seconds()
+            delay = max(0, config.matching.initial_delay - elapsed.total_seconds())
 
         # Обновить время для повтора
         updated_request = MatchRequest(
@@ -224,9 +223,9 @@ class ProcessMatchRequestUseCase:
         """ Обработать случаи, когда матч не найден"""
 
         # Проверить лимиты времени и попыток
-        elapsed = datetime.now() - request.created_at
+        elapsed = datetime.now(tz=config.timezone) - request.created_at
         if elapsed.total_seconds() >= config.matching.max_wait_time or \
-                request.retry_count > config.matching.max_retries:
+                request.retry_count >= config.matching.max_retries:
             # Превышены лимиты, уведомить о таймауте
             await self._handle_timeout(request.user_id)
             return True

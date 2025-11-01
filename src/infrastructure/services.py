@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from typing import List, Dict
@@ -38,7 +39,7 @@ class RateLimiter:
 
 
 class CurcuitBreaker:
-
+    """ Класс для прерывания циклических операций """
     def __init__(self, failure_threshold=3, recovery_timeout=5):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
@@ -68,12 +69,12 @@ class CurcuitBreaker:
 
 
 class RabbitMQMessagePublisher:
-
+    """ Класс для отправки сообщений в очередь ожидания """
     def __init__(self):
         self._initialized = False
 
     async def connect(self):
-        """Установка подключения к RabbitMQ"""
+        """ Установка подключения к RabbitMQ """
         if self._initialized:
             return
 
@@ -86,7 +87,7 @@ class RabbitMQMessagePublisher:
         await self.declare_exchanges_and_queues()
 
     async def declare_exchanges_and_queues(self):
-        """Объявление всех обменников и очередей"""
+        """ Объявление всех обменников и очередей """
 
         self.default_exchange = await self.channel.declare_exchange(
             name=config.rabbitmq.match_exchange, type="direct"
@@ -96,17 +97,22 @@ class RabbitMQMessagePublisher:
 
 
     async def publish_match_request(self, data: MatchRequest, delay: float = 0.0):
-        """Публикация запроса на поиск партнера в основную очередь"""
+        """ Публикация запроса на поиск партнера в основную очередь """
 
         await self.connect()
 
-        json_message = json.dumps(data).encode()
+        json_message = json.dumps(data.to_dict()).encode()
+
+        if delay > 0:
+            # Используем delayed exchange или dead letter exchange для задержки
+            # Для простоты используем asyncio.sleep, но в продакшене лучше использовать RabbitMQ delayed message plugin
+            await asyncio.sleep(delay)
 
         await self.default_exchange.publish(
             aio_pika.Message(
                 body=json_message, delivery_mode=aio_pika.DeliveryMode.PERSISTENT
             ),
-            routing_key=config.RABBITMQ_QUEUE,
+            routing_key=config.rabbitmq.match_queue,
         )
 
     async def publish_to_dead_letter(self, data: MatchRequest, err_msg: str):
@@ -121,7 +127,7 @@ class RabbitMQMessagePublisher:
 
 
 class RateLimiter:
-    """Ограничитель частоты запросов для предотвращения злоупотреблений"""
+    """ Ограничитель частоты запросов для предотвращения злоупотреблений """
 
     def __init__(self, max_requests: int = 3, time_window: int = 1):
         """
