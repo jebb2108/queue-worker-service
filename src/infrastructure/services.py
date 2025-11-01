@@ -8,6 +8,10 @@ import aio_pika
 from src.config import config
 from src.domain.value_objects import MatchRequest
 
+import logging
+
+logger = logging.getLogger(name='match_endpoints')
+
 
 class CircuitBreakerOpenException(Exception):
     pass
@@ -102,6 +106,7 @@ class RabbitMQMessagePublisher:
         await self.connect()
 
         json_message = json.dumps(data.to_dict()).encode()
+        logger.info(json_message)
 
         if delay > 0:
             # Используем delayed exchange или dead letter exchange для задержки

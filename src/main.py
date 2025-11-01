@@ -85,7 +85,7 @@ class WorkerService:
             await self.app.run()
 
         except KeyboardInterrupt:
-            logger.info("Recieved keyboard interrupt")
+            logger.info("Received keyboard interrupt")
             raise
         except Exception as e:
             logger.error(f"Error running Worker Service: {e}")
@@ -100,9 +100,8 @@ class WorkerService:
         logger.info("Cleaning up Worker Service ...")
 
         try:
-
             if self.broker:
-                await self.broker.start()
+                await self.broker.stop()
 
             await cleanup_container()
 

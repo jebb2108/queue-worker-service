@@ -53,7 +53,7 @@ class DatabaseConfig:
 @dataclass
 class RabbitMQConfig:
     """ Конфигурация RabbitMQ """
-    url: str = "amqp://"
+    url: str = "amqp://localhost:5672/"
 
     # Очереди
     match_queue: str =  "match_requests"

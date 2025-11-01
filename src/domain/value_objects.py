@@ -99,6 +99,7 @@ class MatchRequest:
             dating=criteria_data.get('dating', False)
         )
 
+
         return cls(
             user_id=int(data['user_id']),
             username=data['username'],
