@@ -8,11 +8,12 @@ from src.application.interfaces import (
     AbstractMessagePublisher
 )
 from src.config import config
+from logconfig import opt_logger as log
 from src.domain.entities import Match, User, ScoredCandidate
 from src.domain.exceptions import UserNotFoundException, MatchingException
 from src.domain.value_objects import MatchRequest, UserStatus, UserState
 
-logger = logging.getLogger(name='use cases')
+logger = log.setup_logger(name='use cases')
 
 
 class FindMatchUseCase:
