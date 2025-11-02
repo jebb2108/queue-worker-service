@@ -37,7 +37,8 @@ async def submit_match_request(
         }
 
         redis_repo = await get_user_repository()
-        await redis_repo.save(User.from_dict(request_data))
+        await redis_repo.add_to_queue(User.from_dict(request_data))
+        print(await redis_repo.get_queue_size())
 
         # Отправить в очередь
         await publisher.publish_match_request(MatchRequest.from_dict(match_request))

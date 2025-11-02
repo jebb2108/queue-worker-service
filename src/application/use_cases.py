@@ -47,13 +47,16 @@ class FindMatchUseCase:
             best_candidate = await self._select_best_candidate(user, candidates)
 
             if not best_candidate:
+                await self._release_reservations([c.user_id for c in candidates])
                 return None
 
             # Создать матч
-            match = Match.create(user, best_candidate.candidate, best_candidate.score.total_score)
-
+            match = Match.create(
+                user, best_candidate.candidate, best_candidate.score.total_score
+            )
+            
             # Сохранить матч
-            await self.match_repo.save(match)
+            await self.match_repo.save(match)  # noqa
 
             # Удалить пользователей из очереди
             await self.user_repo.remove_from_queue(user.user_id)
@@ -61,6 +64,11 @@ class FindMatchUseCase:
 
             # Обновить состояния пользователей
             await self._update_user_states([user.user_id, best_candidate.candidate.user_id])
+
+            # Освободить резервации остальных кандидатов
+            other_candidates = [c.user_id for c in candidates if c.user_id != best_candidate.candidate.user_id]
+            if other_candidates:
+                await self._release_reservations(other_candidates)
 
             return match
 
@@ -105,11 +113,22 @@ class FindMatchUseCase:
                 state = await self.state_repo.get_state(user_id)
                 if state:
                     updated_state = state.update_status(UserStatus.MATCHED)
-                    await self.state_repo.save_state(updated_state)
+                else:
+                    updated_state = UserState(
+                        user_id=user_id,
+                        status=UserStatus.MATCHED,
+                        created_at=time.time()
+                    )
+                await self.state_repo.save_state(updated_state)
 
             except Exception as e:
                 # Не критичная ошибка, логируем и продолжаем
                 logger.warning(f"Error while updating user state for matched status: {e}")
+
+    async def _release_reservations(self, user_ids: List[int]) -> None:
+        """Освободить резервации пользователей"""
+        if hasattr(self.user_repo, 'release_reservations'):
+            await self.user_repo.release_reservations(user_ids)
 
 
 
@@ -133,10 +152,12 @@ class ProcessMatchRequestUseCase:
             should_process = await self._should_process_request(request)
 
             if not should_process:
+                logger.debug("Request either proccessed or rejected")
                 return True # Запрос обработан (отклонен или отложен)
 
             if await self._should_delay_processing(request):
                 await self._schedule_retry(request)
+                logger.debug('Message data after scheduled retry now processed')
                 return True
 
             # поаытаться найти матч
@@ -144,6 +165,10 @@ class ProcessMatchRequestUseCase:
 
             if match:
                 #  Матч найден, обработка завершена
+                logger.info(
+                    "Match created for user %s",
+                    request.user_id
+                )
                 return True
 
             # Матч не найден, проверить лимиты и запланировать повтор
@@ -152,7 +177,7 @@ class ProcessMatchRequestUseCase:
         except Exception as e:
             # В случае ошибки отправляем в dead letter queue
             await self.message_publisher.publish_to_dead_letter(
-                request.to_dict(),
+                request.to_dict(), # noqa
                 f"Processing error: {str(e)}"
             )
             return False
@@ -195,7 +220,7 @@ class ProcessMatchRequestUseCase:
     async def _should_delay_processing(request: MatchRequest):
         """Определить, нужно ли отложить обработку"""
         elapsed = datetime.now(tz=config.timezone) - request.created_at
-        return elapsed.total_seconds() < config.matching.initial_delay
+        return elapsed.total_seconds() < config.matching.initial_delay  # 5 секунд
 
     async def _schedule_retry(self, request, delay: float = None) -> None:
         """Запланировать повторную обработку"""
@@ -266,13 +291,15 @@ class ProcessMatchRequestUseCase:
             }
         )
 
+        logger.debug("User %s criteria relaxed", request.user_id)
         # Запланировать повтор с задержкой
-        delay = min(30.0, 5.0 * (updated_request.retry_count + 1)) # Линейная задержка
+        delay = min(30.0, 2.0 * (updated_request.retry_count + 1)) # Линейная задержка
         await self.message_publisher.publish_match_request(updated_request, delay)
+
 
     async def _handle_timeout(self, user_id: int) -> None:
         """Обработать таймаут поиска"""
-
+        logger.debug("Time wait for message % s expired", user_id)
         # Очистить состояние
         await self._cleanup_user_state(user_id)
 

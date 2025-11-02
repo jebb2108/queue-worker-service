@@ -10,17 +10,18 @@ from typing import List, Optional, Dict, Any
 
 import asyncpg
 import redis
-from redis.asyncio import Redis as aioredis
 
-from src.config import config
-from src.domain.entities import User, Match
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
 )
+from src.config import config
+from src.domain.entities import User, Match
 from src.domain.value_objects import UserState, MatchCriteria
 from src.handlers.match_handler import logger
 
-redis_client = aioredis.from_url("redis://", decode=True)
+from logconfig import opt_logger as log
+
+logger = log.setup_logger(name="repositories")
 
 
 class RedisUserRepository(AbstractUserRepository, ABC):
@@ -51,6 +52,8 @@ class RedisUserRepository(AbstractUserRepository, ABC):
             await pipe.expire(f"user:{user.user_id}", config.cache_ttl)
             await pipe.expire(f"criteria:{user.user_id}", config.cache_ttl)
             await pipe.execute()
+
+        logger.debug("User criteria saved on Redis repo")
 
     async def find_by_id(self, user_id: int) -> Optional[User]:
         """Найти пользователя по ID"""
@@ -83,16 +86,20 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         except (KeyError, ValueError, json.JSONDecodeError):
             return None
 
+        finally:
+            logger.debug("Created new User entity ")
+
     async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
         """ Найти совместимых пользователей с использованием Lua скрипта """
 
-        # Lua скрипт для эффективного поиска совместимых пользователей
+        # Lua скрипт для эффективного поиска и резервации совместимых пользователей
         lua_script = """
         local queue_key = KEYS[1]
         local user_id = ARGV[1]
         local user_language = ARGV[2]
         local user_fluency = tonumber(ARGV[3])
         local max_candidates = tonumber(ARGV[4])
+        local reservation_ttl = 30
 
         local queue_members = redis.call('LRANGE', queue_key, 0, -1)
         local candidates = {}
@@ -100,21 +107,27 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
         for i, member_id in ipairs(queue_members) do
             if member_id ~= user_id and count < max_candidates then
-                local criteria_key = 'criteria:' .. member_id
-                local candidate_criteria = redis.call('HGETALL', criteria_key)
+                -- Проверить, не зарезервирован ли уже
+                local reservation_key = 'reserved:' .. member_id
+                if redis.call('EXISTS', reservation_key) == 0 then
+                    local criteria_key = 'criteria:' .. member_id
+                    local candidate_criteria = redis.call('HGETALL', criteria_key)
 
-                if #candidate_criteria > 0 then
-                    local criteria = {}
-                    for j = 1, #candidate_criteria, 2 do
-                        criteria[candidate_criteria[j]] = candidate_criteria[j + 1]
-                    end
+                    if #candidate_criteria > 0 then
+                        local criteria = {}
+                        for j = 1, #candidate_criteria, 2 do
+                            criteria[candidate_criteria[j]] = candidate_criteria[j + 1]
+                        end
 
-                    -- Предварительная фильтрация
-                    if criteria['language'] == user_language then
-                        local fluency_diff = math.abs(tonumber(criteria['fluency'] or 0) - user_fluency)
-                        if fluency_diff <= 2 then
-                            table.insert(candidates, member_id)
-                            count = count + 1
+                        -- Предварительная фильтрация
+                        if criteria['language'] == user_language then
+                            local fluency_diff = math.abs(tonumber(criteria['fluency'] or 0) - user_fluency)
+                            if fluency_diff <= 2 then
+                                -- Зарезервировать кандидата
+                                redis.call('SET', reservation_key, user_id, 'EX', reservation_ttl)
+                                table.insert(candidates, member_id)
+                                count = count + 1
+                            end
                         end
                     end
                 end
@@ -126,15 +139,23 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
         candidate_ids = await self.redis.eval(
             lua_script, 1, "waiting_queue",
-                            str(user.user_id), user.criteria.language, str(user.criteria.fluency), str(limit)
+            str(user.user_id), user.criteria.language, str(user.criteria.fluency), str(limit)
+        )
+
+        logger.debug(
+            "All candidates ids: %s", ", ".join(candidate_ids) if candidate_ids else 'nobody'
         )
 
         # Получить полные данные кандидатов
-        compatible_users = []
+        compatible_users: list = []
         for candidate_id in candidate_ids:
             candidate = await self.find_by_id(int(candidate_id))
             if candidate and user.is_compatible_with(candidate):
                 compatible_users.append(candidate)
+        
+        # Логирование подходящих пользователей из очереди ожидания
+        f_users = [ str(u.user_id) if u else u for u in compatible_users ]
+        logger.debug("Compatible candidates: %s", ", ".join(f_users) if f_users else 'nobody')
 
         return compatible_users
 
@@ -143,6 +164,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         await self.save(user)  # Сохранить данные пользователя
         await self.redis.lpush("waiting_queue", user.user_id)
         await self.redis.setex(f"searching:{user.user_id}", config.matching.max_wait_time, 1)
+        logger.debug("User %s added to queue", user.user_id)
 
     async def remove_from_queue(self, user_id: int) -> None:
         """ Удалить пользователя из очереди """
@@ -152,6 +174,8 @@ class RedisUserRepository(AbstractUserRepository, ABC):
             await pipe.delete(f"user:{user_id}")
             await pipe.delete(f"criteria:{user_id}")
             await pipe.execute()
+
+        logger.debug("User %s removed from queue", user_id)
 
     async def get_queue_size(self) -> int:
         """ Получить размер очереди """
@@ -168,6 +192,28 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
         await self.redis.hset(f"criteria:{user_id}", mapping=criteria_data)
         await self.redis.expire(f"criteria:{user_id}", config.cache_ttl)
+        logger.debug("Criteria updated: %s", criteria_data)
+
+    async def release_reservations(self, user_ids: List[int]) -> None:
+        """Освободить резервации пользователей"""
+        if not user_ids:
+            return
+        
+        keys = [f"reserved:{user_id}" for user_id in user_ids]
+        if keys:
+            await self.redis.delete(*keys)
+            logger.debug("Released reservations for users: %s", user_ids)
+
+    @asynccontextmanager
+    async def transaction(self):
+        """Простая реализация транзакции через pipeline"""
+        async with self.redis.pipeline() as pipe:
+            try:
+                yield pipe
+                await pipe.execute()
+            except Exception:
+                # В случае ошибки pipeline автоматически отменяется
+                raise
 
 
 class MemoryStateRepository(AbstractStateRepository, ABC):
@@ -287,11 +333,8 @@ class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
         """ Получить соединение с базой данных """
         if self.pool is None:
             self.pool = await asyncpg.create_pool(dsn=config.database.url)
-        conn = await self.pool.acquire()
-        try:
+        async with self.pool.acquire() as conn:
             yield conn
-        finally:
-            await self.pool.release(conn)
 
     async def save(self, match: Match) -> None:
         """ Сохранить матч в базу данных """
@@ -307,7 +350,7 @@ class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
                 match.user2.user_id,
                 match.room_id,
                 match.compatibility_score,
-                match.created_at,
+                match.created_at.replace(tzinfo=None),
                 match.status
             )
 

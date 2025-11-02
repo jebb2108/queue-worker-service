@@ -1,13 +1,14 @@
-import logging
 from typing import Dict, Any
 
-from faststream.rabbit.message import RabbitMessage
+from faststream.rabbit.annotations import RabbitMessage
 
+from logconfig import opt_logger as log
 from src.application.use_cases import ProcessMatchRequestUseCase
+from src.domain.exceptions import DomainException
 from src.domain.value_objects import MatchRequest
 from src.infrastructure.services import RateLimiter, CurcuitBreaker
 
-logger = logging.getLogger(name='match_handler')
+logger = log.setup_logger(name='match_handler')
 
 
 class MatchRequestHandler:
@@ -27,7 +28,6 @@ class MatchRequestHandler:
         """ Обрабатывать сообщения с запросом на матчинг """
 
         try:
-            # await msg.ack()
             # Валидация входящих данных
             if not self._validate_message(data):
                 return await msg.ack()
@@ -52,6 +52,8 @@ class MatchRequestHandler:
                 self._process_request_safely, match_request
             )
 
+            logger.debug('Success data after processing: %s', success)
+
             if success:
                 await msg.ack()
                 return
@@ -64,7 +66,14 @@ class MatchRequestHandler:
             await msg.nack()
 
     async def _process_request_safely(self, match_request: MatchRequest):
-        await self.process_match_use_case.execute(match_request)
+        try:
+
+            return await self.process_match_use_case.execute(match_request)
+
+        except DomainException:
+            return False
+        except Exception as e:
+            logger.error(f"Error while safe processing message: {e}")
 
     @staticmethod
     def _validate_message(message: Dict[str, Any]) -> bool:

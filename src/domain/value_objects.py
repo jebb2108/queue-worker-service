@@ -58,13 +58,13 @@ class MatchCriteria:
         relaxed_dating = self.dating
         relaxed_fluency = self.fluency
 
-        if step >= 5:
+        if step >= 3:
             relaxed_dating = False
 
-        if step >= 10:
+        if step >= 5:
             relaxed_topics = ["general"]
 
-        if step >= 15 and relaxed_fluency > 0:
+        if step >= 8 and relaxed_fluency > 0:
             relaxed_fluency -= 1
 
         return MatchCriteria(

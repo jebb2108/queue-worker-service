@@ -12,8 +12,8 @@ load_dotenv("""../.env""")
 class MatchingConfig:
     """Конфигурация для алгоритма матчинга"""
     max_wait_time: int = 150  # секунды
-    initial_delay: int = 5  # секунды
-    max_retries: int = 20
+    initial_delay: int = 1  # секунды
+    max_retries: int = 6
     compatibility_threshold: float = 0.7
 
     # Веса для скоринга совместимости
@@ -43,7 +43,7 @@ class RedisConfig:
 @dataclass
 class DatabaseConfig:
     """ Конфигурация PostgresSQL """
-    url: str = "postgresql://"
+    url: str = "postgresql://localhost:5432/postgres"
     min_size: int = 5
     max_size: int = 20
     timeout: int = 60

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import sys
 from typing import Optional
 
@@ -10,8 +9,9 @@ from faststream.rabbit.annotations import RabbitMessage
 from config import config
 from container import get_container, cleanup_container
 from handlers.match_handler import MatchRequestHandler
+from logconfig import opt_logger as log
 
-logger = logging.getLogger('main')
+logger = log.setup_logger(name='worker')
 
 class WorkerService:
     """ Основной класс Worker Service """
@@ -24,14 +24,14 @@ class WorkerService:
 
     async def initialize(self):
         """ Инициализация сервиса """
-        logger.info("Initializing Worker Service ...")
+        logger.debug("Initializing Worker Service ...")
 
         try:
             # Получить контейнер зависимостей
             self.container = await get_container()
 
             # Создать брокер сообщений
-            self.broker = RabbitBroker()
+            self.broker = RabbitBroker(logger=logger)
 
             # Создать обработчики
             await self._create_handlers()
@@ -40,9 +40,9 @@ class WorkerService:
             await self._register_message_handlers()
 
             # Создать FastStream приложение
-            self.app = FastStream(self.broker)
+            self.app = FastStream(self.broker, logger=logger)
 
-            logger.info("Worker Service initialized successfully")
+            logger.debug("Worker Service initialized successfully")
 
         except Exception as e:
             logger.error(f"Failed to initialize Worker Service: {e}")
@@ -60,7 +60,7 @@ class WorkerService:
             'match': MatchRequestHandler(process_match_request_usecase)
         }
 
-        logger.info("Match handler created")
+        logger.debug("Match handler created")
 
     async def _register_message_handlers(self):
         """ Зарегистрировать обрабочики сообщений """
@@ -70,12 +70,12 @@ class WorkerService:
         async def handle_match_request(data: dict, msg: RabbitMessage):
             await self.handlers['match'].handle_message(data, msg)
 
-        logger.info("Message handlers registered")
+        logger.debug("Message handlers registered")
 
 
     async def start(self):
         """ Запусть Worker Service """
-        logger.info('Starting Worker service ...')
+        logger.debug('Starting Worker service ...')
 
         try:
             # Инициализация
@@ -97,7 +97,7 @@ class WorkerService:
 
     async def cleanup(self):
         """ Очистка ресурсов """
-        logger.info("Cleaning up Worker Service ...")
+        logger.debug("Cleaning up Worker Service ...")
 
         try:
             if self.broker:
@@ -105,7 +105,7 @@ class WorkerService:
 
             await cleanup_container()
 
-            logger.info("Worker Service cleanup completed")
+            logger.debug("Worker Service cleanup completed")
 
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
@@ -113,7 +113,7 @@ class WorkerService:
 
 async def main():
     """Главная функция"""
-    logger.info("Starting English Tutor Worker Service")
+    logger.info("Starting Worker Service")
     logger.info(f"Configuration: Debug={config.debug}, Log Level={config.log_level}")
 
     # Создать и запустить сервисы

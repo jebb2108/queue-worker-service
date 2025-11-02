@@ -10,3 +10,4 @@ uvicorn~=0.38.0
 fastapi~=0.120.4
 new_worker_service~=0.0.0
 pydantic~=2.12.3
+colorama~=0.4.6

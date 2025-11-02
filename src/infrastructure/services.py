@@ -5,12 +5,11 @@ from typing import List, Dict
 
 import aio_pika
 
+from logconfig import opt_logger as log
 from src.config import config
 from src.domain.value_objects import MatchRequest
 
-import logging
-
-logger = logging.getLogger(name='match_endpoints')
+logger = log.setup_logger(name='match_endpoints')
 
 
 class CircuitBreakerOpenException(Exception):
@@ -106,7 +105,6 @@ class RabbitMQMessagePublisher:
         await self.connect()
 
         json_message = json.dumps(data.to_dict()).encode()
-        logger.info(json_message)
 
         if delay > 0:
             # Используем delayed exchange или dead letter exchange для задержки

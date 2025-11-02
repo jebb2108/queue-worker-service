@@ -43,6 +43,15 @@ class AbstractUserRepository(ABC):
         """Обновить критерии пользователя"""
         pass
 
+    @abstractmethod
+    async def release_reservations(self, user_ids: List[int]) -> None:
+        """Освободить резервации пользователей"""
+        pass
+
+    def transaction(self):
+        """Контекстный менеджер для транзакций"""
+        pass
+
 
 class AbstractMatchRepository(ABC):
     pass
