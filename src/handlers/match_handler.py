@@ -52,8 +52,6 @@ class MatchRequestHandler:
                 self._process_request_safely, match_request
             )
 
-            logger.debug('Success data after processing: %s', success)
-
             if success:
                 await msg.ack()
                 return
@@ -67,13 +65,14 @@ class MatchRequestHandler:
 
     async def _process_request_safely(self, match_request: MatchRequest):
         try:
-
             return await self.process_match_use_case.execute(match_request)
 
         except DomainException:
             return False
+
         except Exception as e:
             logger.error(f"Error while safe processing message: {e}")
+            raise # Для перехвата curcuit breaker
 
     @staticmethod
     def _validate_message(message: Dict[str, Any]) -> bool:

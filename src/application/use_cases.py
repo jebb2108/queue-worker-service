@@ -154,8 +154,6 @@ class ProcessMatchRequestUseCase:
         """ Обработать запрос на матчинг """
         try:
 
-            logger.debug(await self.state_repo.get_state(request.user_id))
-
             #  Проверить состояние пользователя
             should_process = await self._should_process_request(request)
 
@@ -165,7 +163,7 @@ class ProcessMatchRequestUseCase:
 
             if await self._should_delay_processing(request):
                 await self._schedule_retry(request)
-                logger.debug('Message data after scheduled retry now processed')
+                logger.debug('Msg after scheduled retry processed')
                 return True
 
             # поаытаться найти матч
@@ -174,9 +172,10 @@ class ProcessMatchRequestUseCase:
             if match:
                 #  Матч найден, обработка завершена
                 logger.info(
-                    "Match created for user %s",
-                    request.user_id
+                    "Match created for users: %s, %s",
+                    match.user1.user_id, match.user2.user_id
                 )
+                logger.info("Their match id: %s",  match.match_id)
                 return True
 
             # Матч не найден, проверить лимиты и запланировать повтор
@@ -204,6 +203,11 @@ class ProcessMatchRequestUseCase:
         state = await self.state_repo.get_state(request.user_id)
 
         if state:
+
+            logger.debug(
+                "user id: %s, their state: %s",
+                state.user_id, state.status
+            )
 
             # Проверить, не истек ли запрос
             if state.is_expired(config.matching.max_wait_time):
@@ -275,6 +279,9 @@ class ProcessMatchRequestUseCase:
 
         # Ослабить критерии на основое количества повторов
         relaxed_criteria = request.criteria.relax(request.retry_count)
+
+        if request.retry_count in [3, 5, 8]:
+            logger.debug("Criteria for user %s relaxed", request.user_id)
 
         # Создать новый запрос с ослабленными критериями
         updated_request = MatchRequest(
