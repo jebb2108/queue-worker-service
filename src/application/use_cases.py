@@ -139,16 +139,23 @@ class ProcessMatchRequestUseCase:
     def __init__(
         self,
         find_match_use_case: FindMatchUseCase,
-        message_publisher: AbstractMessagePublisher
+        message_publisher: AbstractMessagePublisher,
+        redis_repo: AbstractUserRepository,
+        state_repo: AbstractStateRepository
     ):
 
         self.find_match_use_case = find_match_use_case
         self.message_publisher = message_publisher
+        self.redis_repo = redis_repo
+        self.state_repo = state_repo
 
 
     async def execute(self, request: MatchRequest):
         """ Обработать запрос на матчинг """
         try:
+
+            logger.debug(await self.state_repo.get_state(request.user_id))
+
             #  Проверить состояние пользователя
             should_process = await self._should_process_request(request)
 
@@ -194,16 +201,18 @@ class ProcessMatchRequestUseCase:
             return False
 
         # Получить состояние пользователя
-        state = await self.find_match_use_case.state_repo.get_state(request.user_id)
+        state = await self.state_repo.get_state(request.user_id)
 
         if state:
-            # Проверить, не обработан ли запрос
-            if state.status == UserStatus.MATCHED:
-                return False
 
             # Проверить, не истек ли запрос
             if state.is_expired(config.matching.max_wait_time):
                 await self._handle_timeout(request.user_id)
+                return False
+
+            # Проверить, не обработан ли запрос
+            if not await self.redis_repo.is_searching(request.user_id) and \
+                    state.status == UserStatus.MATCHED:
                 return False
 
         else:
@@ -212,7 +221,7 @@ class ProcessMatchRequestUseCase:
                 status=UserStatus.WAITING,
                 created_at=time.time()
             )
-            await self.find_match_use_case.state_repo.save_state(new_state)
+            await self.state_repo.save_state(new_state)
 
         return True
 
@@ -308,7 +317,7 @@ class ProcessMatchRequestUseCase:
     async def _cleanup_user_state(self, user_id: int):
         """Очистить состояние пользователя"""
         try:
-            await self.find_match_use_case.state_repo.delete_state(user_id)
+            await self.state_repo.delete_state(user_id)
             await self.find_match_use_case.user_repo.remove_from_queue(user_id)
 
         except Exception as e:

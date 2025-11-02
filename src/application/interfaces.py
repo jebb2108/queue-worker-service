@@ -34,6 +34,10 @@ class AbstractUserRepository(ABC):
         pass
 
     @abstractmethod
+    async def is_searching(self, user_id: int) -> bool:
+        pass
+
+    @abstractmethod
     async def get_queue_size(self) -> int:
         """Получить размер очереди"""
         pass

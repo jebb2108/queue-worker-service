@@ -6,7 +6,7 @@ from asyncio import sleep, CancelledError
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 import asyncpg
 import redis
@@ -16,6 +16,7 @@ from src.application.interfaces import (
 )
 from src.config import config
 from src.domain.entities import User, Match
+from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import UserState, MatchCriteria
 from src.handlers.match_handler import logger
 
@@ -161,6 +162,11 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
     async def add_to_queue(self, user: User) -> None:
         """ Добавить пользователя в очередь поиска """
+
+        # Проверка на существующего пользователя в очереди
+        if await self.is_searching(user_id=user.user_id):
+            raise UserAlreadyInSearch
+        
         await self.save(user)  # Сохранить данные пользователя
         await self.redis.lpush("waiting_queue", user.user_id)
         await self.redis.setex(f"searching:{user.user_id}", config.matching.max_wait_time, 1)
@@ -169,7 +175,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
     async def remove_from_queue(self, user_id: int) -> None:
         """ Удалить пользователя из очереди """
         async with self.redis.pipeline() as pipe:
-            await pipe.lrem("waiting_queue", 0, user_id)
+            await pipe.lrem("waiting_queue", 1, user_id)
             await pipe.delete(f"searching:{user_id}")
             await pipe.delete(f"user:{user_id}")
             await pipe.delete(f"criteria:{user_id}")
@@ -180,6 +186,10 @@ class RedisUserRepository(AbstractUserRepository, ABC):
     async def get_queue_size(self) -> int:
         """ Получить размер очереди """
         return await self.redis.llen("waiting_queue")
+
+    async def is_searching(self, user_id: Union[int, str]) -> bool:
+        """ Получить булевое состяние поиска пользователя """
+        return await self.redis.exists(f"searching:{user_id}")
 
     async def update_user_criteria(self, user_id: int, criteria: Dict[str, Any]) -> None:
         """ Обновить критерии пользователя """

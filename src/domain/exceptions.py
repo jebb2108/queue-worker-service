@@ -31,3 +31,7 @@ class InvalidCriteriaException(DomainException):
 class MatchCreationException(MatchingException):
     """Ошибка создания матча"""
     pass
+
+
+class UserAlreadyInSearch(Exception):
+    pass
