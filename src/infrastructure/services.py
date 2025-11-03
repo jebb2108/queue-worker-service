@@ -4,11 +4,11 @@ import time
 from typing import List, Dict, Any
 
 import aio_pika
-from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram, CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
+from redis.asyncio import Redis as redis
 
-from src.logconfig import opt_logger as log
 from src.application.interfaces import AbstractMetricsCollector
-
+from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='services')
 
@@ -186,14 +186,16 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
         """
         Инициализация сборщика метрик
         """
-        from prometheus_client import REGISTRY
-        self.registry = REGISTRY
+        self.redis_client = redis.from_url(config.redis.gateway_url, decode_responses=True)
+        self.metrics_key = "worker_service:metrics"
+        self.registry = CollectorRegistry()
 
-        # Initialize metrics with the global registry
+        # Инициализация метрик
         self._init_metrics()
 
     def _init_metrics(self):
-        """Initialize all metrics"""
+        """ Инициализировать все метрики """
+
         # Метрики очереди ожидания
         self.queue_size = Gauge(
             'matching_queue_size',
@@ -344,8 +346,12 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
                     processing_time_range=time_range
                 ).inc()
 
+            # Сохранить метрики в Redis
+            await self._save_metrics_to_redis()
+
         except Exception as e:
             logger.error(f"Error recording match attempt metrics: {e}")
+            raise
 
     async def record_error(self, error_type: str, user_id: int = None) -> None:
         """
@@ -360,6 +366,9 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
                 error_type=error_type,
                 user_id_present=user_id_present
             ).inc()
+
+            await self._save_metrics_to_redis()
+
         except Exception as e:
             logger.error(f"Error recording error metrics: {e}")
 
@@ -369,7 +378,11 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
         :param size: Текущий размер очереди
         """
         try:
+
             self.queue_size.set(size)
+
+            await self._save_metrics_to_redis()
+
         except Exception as e:
             logger.error(f"Error recording queue size: {e}")
 
@@ -379,7 +392,11 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
         :param wait_time: Время ожидания в секундах
         """
         try:
+
             self.queue_wait_time.observe(wait_time)
+
+            await self._save_metrics_to_redis()
+
         except Exception as e:
             logger.error(f"Error recording queue wait time: {e}")
 
@@ -412,6 +429,7 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
             ).inc()
 
             self.retry_delay.observe(delay)
+            await self._save_metrics_to_redis()
 
         except Exception as e:
             logger.error(f"Error recording retry metrics: {e}")
@@ -429,6 +447,7 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
 
             # Увеличиваем счетчик нового статуса
             self.active_users.labels(status=new_status).inc()
+            await self._save_metrics_to_redis()
 
         except Exception as e:
             logger.error(f"Error recording user status change: {e}")
@@ -444,48 +463,38 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
                 criteria_type=criteria_type,
                 value=str(value)
             ).inc()
+
+            await self._save_metrics_to_redis()
+
         except Exception as e:
             logger.error(f"Error recording criteria usage: {e}")
 
     async def get_metrics(self) -> Dict[str, Any]:
         """
-        Получить метрики без доступа к внутренним атрибутам
+        Получить метрики из Redis
         """
         try:
-            metrics_data = generate_latest(self.registry)
-
+            metrics_data = await self.redis_client.get(self.metrics_key)
             return {
-                'prometheus_metrics': metrics_data.decode('utf-8'),
+                'prometheus_metrics': metrics_data or '',
                 'content_type': CONTENT_TYPE_LATEST,
                 'timestamp': time.time()
             }
 
         except Exception as e:
-            logger.error(f"Error generating metrics: {e}")
-            await self.record_error('metrics_generation_error')
+            logger.error(f"Error fetching metrics from Redis: {e}")
+            await self.record_error('metrics_fetch_error')
             return {
-                'error': 'Failed to generate metrics',
+                'error': 'Failed to fetch metrics from Redis',
                 'timestamp': time.time()
             }
 
-    @staticmethod
-    async def get_metrics_summary() -> Dict[str, Any]:
-        """
-        Получить сводку метрик без парсинга Prometheus формата
-        """
-        # Вместо парсинга внутренних значений, используйте отдельные счетчики
-        # или экспортируйте метрики в формате, удобном для парсинга
-        try:
-            return {
-                'queue_size': 0,
-                'active_users': 0,
-                'total_attempts': 0,
-                'total_errors': 0,
-                'timestamp': time.time()
-            }
-        except Exception as e:
-            logger.error(f"Error getting metrics summary: {e}")
-            return {'error': str(e)}
+
+    async def _save_metrics_to_redis(self) -> None:
+        """ Сохранить метрики в Redis """
+        metrics_data = generate_latest(self.registry).decode('utf-8')
+        await self.redis_client.set(self.metrics_key, metrics_data)
+
 
 
     async def get_health_status(self) -> Dict[str, Any]:

@@ -117,6 +117,21 @@ services:
       timeout: 10s
       retries: 5
 
+  redis-metrics:
+    image: redis:7-alpine
+    container_name: redis-metrics
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_metrics_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
 networks:
   app-network:
     driver: bridge
@@ -127,3 +142,4 @@ volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+  redis_metrics_data:

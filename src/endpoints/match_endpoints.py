@@ -3,7 +3,7 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends, status, Response
 from pydantic import BaseModel, Field
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST
 
 from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector
 from src.config import config
@@ -60,7 +60,7 @@ async def submit_match_request(
         }
 
         # Отправить в очередь ожидания
-        await redis_repo.add_to_queue(User.from_dict(request_data.dict()))
+        await redis_repo.add_to_queue(User.from_dict(match_request))
         await publisher.publish_match_request(MatchRequest.from_dict(match_request))
         return MatchResponse(status="accepted", message="Match request submitted successfully")
 
@@ -91,12 +91,18 @@ async def health_check(
 
 
 @router.get("/metrics")
-async def get_metrics() -> Response:
+async def get_metrics(
+    metrics_collector: AbstractMetricsCollector = Depends(get_metrics_collector)
+) -> Response:
     """
     Получить метрики сервиса в формате Prometheus
     """
+    metrics_data = await metrics_collector.get_metrics()
+    content = metrics_data.get('prometheus_metrics', '')
+    if not content:
+        content = '# No metrics available\n'
     return Response(
-        content=generate_latest(),
+        content=content,
         media_type=CONTENT_TYPE_LATEST
     )
 

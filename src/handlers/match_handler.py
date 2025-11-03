@@ -59,7 +59,6 @@ class MatchRequestHandler:
             )
 
             if success:
-                logger.debug(f"Successfully processed match request for user {user_id}")
                 await msg.ack()
                 return
 
@@ -70,7 +69,6 @@ class MatchRequestHandler:
                 await self.metrics.record_match_attempt(
                     user_id, processing_time, 0, success
                 )
-
                 await msg.nack()
                 return
 

@@ -34,6 +34,7 @@ class MatchingConfig:
 class RedisConfig:
     """ Конфигурация Redis """
     url: str = os.getenv("REDIS_URL")
+    gateway_url: str = os.getenv("GATEWAY_REDIS_URL")
     max_connections: int = 20
     retry_on_timeout: bool = True
     socket_timeout: int = 5

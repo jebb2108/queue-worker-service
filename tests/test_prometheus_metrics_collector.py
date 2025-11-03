@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from src.infrastructure.services import PrometheusMetricsCollector
 
 
@@ -32,18 +32,25 @@ class TestPrometheusMetricsCollector:
         match_found = True
         compatibility_score = 0.85
 
-        await metrics_collector.record_match_attempt(
-            user_id=user_id,
-            processing_time=processing_time,
-            candidates_evaluated=candidates_evaluated,
-            match_found=match_found,
-            compatibility_score=compatibility_score
-        )
+        # Mock Redis operations to avoid connection errors
+        with patch.object(metrics_collector.redis_client, 'set', new_callable=AsyncMock) as mock_set:
+            await metrics_collector.record_match_attempt(
+                user_id=user_id,
+                processing_time=processing_time,
+                candidates_evaluated=candidates_evaluated,
+                match_found=match_found,
+                compatibility_score=compatibility_score
+            )
+
+            # Verify Redis set was called
+            mock_set.assert_called_once()
 
         # Проверяем, что метрики записаны (через get_metrics)
-        metrics = await metrics_collector.get_metrics()
-        assert 'prometheus_metrics' in metrics
-        assert isinstance(metrics['prometheus_metrics'], str)
+        with patch.object(metrics_collector.redis_client, 'get', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = "# Mocked metrics data"
+            metrics = await metrics_collector.get_metrics()
+            assert 'prometheus_metrics' in metrics
+            assert isinstance(metrics['prometheus_metrics'], str)
 
     @pytest.mark.asyncio
     async def test_record_match_attempt_failure(self, metrics_collector):
@@ -53,14 +60,21 @@ class TestPrometheusMetricsCollector:
         candidates_evaluated = 50
         match_found = False
 
-        await metrics_collector.record_match_attempt(
-            user_id=user_id,
-            processing_time=processing_time,
-            candidates_evaluated=candidates_evaluated,
-            match_found=match_found
-        )
+        # Mock Redis operations to avoid connection errors
+        with patch.object(metrics_collector.redis_client, 'set', new_callable=AsyncMock) as mock_set:
+            await metrics_collector.record_match_attempt(
+                user_id=user_id,
+                processing_time=processing_time,
+                candidates_evaluated=candidates_evaluated,
+                match_found=match_found
+            )
+
+            # Verify Redis set was called
+            mock_set.assert_called_once()
 
         # Проверяем, что метрики записаны
-        metrics = await metrics_collector.get_metrics()
-        assert 'prometheus_metrics' in metrics
+        with patch.object(metrics_collector.redis_client, 'get', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = "# Mocked metrics data"
+            metrics = await metrics_collector.get_metrics()
+            assert 'prometheus_metrics' in metrics
 
