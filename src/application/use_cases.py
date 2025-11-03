@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 from typing import Optional, List
 
-from logconfig import opt_logger as log
+from src.logconfig import opt_logger as log
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository,
     AbstractMessagePublisher, AbstractMetricsCollector

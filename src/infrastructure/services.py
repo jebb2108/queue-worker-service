@@ -1,19 +1,19 @@
 import asyncio
 import json
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import aio_pika
-from prometheus_client import Counter, Gauge, Histogram, CollectorRegistry, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-from logconfig import opt_logger as log
+from src.logconfig import opt_logger as log
 from src.application.interfaces import AbstractMetricsCollector
 
 
 logger = log.setup_logger(name='services')
 
 
-from logconfig import opt_logger as log
+from src.logconfig import opt_logger as log
 from src.config import config
 from src.domain.value_objects import MatchRequest
 
@@ -186,8 +186,14 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
         """
         Инициализация сборщика метрик
         """
-        self.registry = CollectorRegistry()
+        from prometheus_client import REGISTRY
+        self.registry = REGISTRY
 
+        # Initialize metrics with the global registry
+        self._init_metrics()
+
+    def _init_metrics(self):
+        """Initialize all metrics"""
         # Метрики очереди ожидания
         self.queue_size = Gauge(
             'matching_queue_size',
@@ -278,6 +284,7 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
             ['criteria_type', 'value'],
             registry=self.registry
         )
+
 
     async def record_match_attempt(
         self,

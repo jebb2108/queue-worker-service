@@ -6,10 +6,10 @@ from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
 
-from config import config
-from container import get_container, cleanup_container
-from handlers.match_handler import MatchRequestHandler
-from logconfig import opt_logger as log
+from src.config import config
+from src.container import get_container, cleanup_container
+from src.handlers.match_handler import MatchRequestHandler
+from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='worker')
 
@@ -31,7 +31,7 @@ class WorkerService:
             self.container = await get_container()
 
             # Создать брокер сообщений
-            self.broker = RabbitBroker(logger=logger)
+            self.broker = RabbitBroker(url=config.rabbitmq.url, logger=logger)
 
             # Создать обработчики
             await self._create_handlers()
@@ -53,11 +53,16 @@ class WorkerService:
 
         # Получаем use_cases из контейнера
         from src.application.use_cases import ProcessMatchRequestUseCase
+        from src.application.interfaces import AbstractMetricsCollector
 
         process_match_request_usecase = await self.container.get(ProcessMatchRequestUseCase)
+        metrics_collector = await self.container.get(AbstractMetricsCollector)
 
         self.handlers = {
-            'match': MatchRequestHandler(process_match_request_usecase)
+            'match': MatchRequestHandler(
+                process_match_request_usecase,
+                metrics_collector
+            )
         }
 
         logger.debug("Match handler created")
@@ -74,7 +79,7 @@ class WorkerService:
 
 
     async def start(self):
-        """ Запусть Worker Service """
+        """ Запустить Worker Service """
         logger.debug('Starting Worker service ...')
 
         try:
@@ -82,6 +87,9 @@ class WorkerService:
             await self.initialize()
 
             # Запуск приложения
+            if self.app is None:
+                raise RuntimeError("Application not initialized")
+
             await self.app.run()
 
         except KeyboardInterrupt:

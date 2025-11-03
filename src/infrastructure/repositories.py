@@ -20,7 +20,7 @@ from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import UserState, MatchCriteria
 from src.handlers.match_handler import logger
 
-from logconfig import opt_logger as log
+from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name="repositories")
 

@@ -3,7 +3,7 @@ from typing import Dict, Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
-from logconfig import opt_logger as log
+from src.logconfig import opt_logger as log
 from src.application.interfaces import AbstractMetricsCollector
 from src.application.use_cases import ProcessMatchRequestUseCase
 from src.domain.exceptions import DomainException

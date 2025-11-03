@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Dict
 
-from logconfig import opt_logger as log
+from src.logconfig import opt_logger as log
 
 
 logger = log.setup_logger("value abjects")

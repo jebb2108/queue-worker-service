@@ -115,3 +115,4 @@ class AbstractMetricsCollector(ABC):
     @abstractmethod
     async def get_health_status(self) -> Dict[str, Any]:
         """ Получить статус здоровья """
+        pass

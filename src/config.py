@@ -33,7 +33,7 @@ class MatchingConfig:
 @dataclass
 class RedisConfig:
     """ Конфигурация Redis """
-    url: str = "redis://localhost:6379/0"
+    url: str = os.getenv("REDIS_URL")
     max_connections: int = 20
     retry_on_timeout: bool = True
     socket_timeout: int = 5
@@ -43,7 +43,7 @@ class RedisConfig:
 @dataclass
 class DatabaseConfig:
     """ Конфигурация PostgresSQL """
-    url: str = "postgresql://localhost:5432/postgres"
+    url: str = os.getenv("DATABASE_URL")
     min_size: int = 5
     max_size: int = 20
     timeout: int = 60
@@ -53,7 +53,7 @@ class DatabaseConfig:
 @dataclass
 class RabbitMQConfig:
     """ Конфигурация RabbitMQ """
-    url: str = "amqp://localhost:5672/"
+    url: str = os.getenv("RABBITMQ_URL")
 
     # Очереди
     match_queue: str =  "match_requests"

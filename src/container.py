@@ -1,4 +1,5 @@
 import inspect
+import logging
 from typing import Type, Any, Dict, Optional
 
 import asyncpg
@@ -113,25 +114,31 @@ class ServiceContainer:
     async def _setup_external_connections(self):
         """ Настроить подключения к внешним сервисам """
         # Redis подключение
-        redis_client = await aioredis.from_url(
-            url=config.redis.url,
-            max_connections=config.redis.max_connections,
-            retry_on_timeout=config.redis.retry_on_timeout,
-            socket_timeout=config.redis.socket_timeout,
-            socket_connect_timeout=config.redis.socket_connect_timeout,
-            decode_responses=True
-        )
-        self.register_instance(redis.Redis, redis_client)
+        try:
+            redis_client = await aioredis.from_url(
+                url=config.redis.url,
+                max_connections=config.redis.max_connections,
+                retry_on_timeout=config.redis.retry_on_timeout,
+                socket_timeout=config.redis.socket_timeout,
+                socket_connect_timeout=config.redis.socket_connect_timeout,
+                decode_responses=True
+            )
+            self.register_instance(redis.Redis, redis_client)
+        except Exception as e:
+            logging.warning(f"Failed to connect to Redis: {e}. Proceeding without Redis connection.")
 
         # PostgreSQL подключение
-        db_pool = await asyncpg.create_pool(
-            config.database.url,
-            min_size=config.database.min_size,
-            max_size=config.database.max_size,
-            timeout=config.database.timeout,
-            command_timeout=config.database.command_timeout
-        )
-        self.register_instance(asyncpg.Pool, db_pool)
+        try:
+            db_pool = await asyncpg.create_pool(
+                config.database.url,
+                min_size=config.database.min_size,
+                max_size=config.database.max_size,
+                timeout=config.database.timeout,
+                command_timeout=config.database.command_timeout
+            )
+            self.register_instance(asyncpg.Pool, db_pool)
+        except Exception as e:
+            logging.warning(f"Failed to connect to PostgreSQL: {e}. Proceeding without database connection.")
 
 
     async def _register_services(self):
@@ -233,3 +240,5 @@ async def get_state_repository() -> AbstractStateRepository:
 
 async def get_metrics_collector() -> AbstractMetricsCollector:
     """ Получить сборщик рассчетов """
+    container = await get_container()
+    return await container.get(AbstractMetricsCollector)
