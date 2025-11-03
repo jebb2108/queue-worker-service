@@ -1,14 +1,13 @@
-import logging
 import time
 from datetime import datetime
 from typing import Optional, List
 
+from logconfig import opt_logger as log
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository,
-    AbstractMessagePublisher
+    AbstractMessagePublisher, AbstractMetricsCollector
 )
 from src.config import config
-from logconfig import opt_logger as log
 from src.domain.entities import Match, User, ScoredCandidate
 from src.domain.exceptions import UserNotFoundException, MatchingException
 from src.domain.value_objects import MatchRequest, UserStatus, UserState
@@ -24,14 +23,16 @@ class FindMatchUseCase:
         user_repository: AbstractUserRepository,
         match_repository: AbstractMatchRepository,
         state_repository: AbstractStateRepository,
+        metrics_collector: AbstractMetricsCollector
     ):
         self.user_repo = user_repository
         self.match_repo = match_repository
         self.state_repo = state_repository
+        self.metrics = metrics_collector
 
     async def execute(self, user_id: int) -> Optional[Match]:
         """Выполнить поиск матча для пользователя"""
-
+        start_time = time.time()
         try:
             # Получить пользователя
             user = await self.user_repo.find_by_id(user_id)
@@ -40,8 +41,12 @@ class FindMatchUseCase:
 
             # Найти совместимых кандидатов
             candidates = await self.user_repo.find_compatible_users(user)
+            candidates_evaluated = len(candidates)
 
             if not candidates:
+                await self.metrics.record_match_attempt(
+                    user_id, time.time() - start_time, candidates_evaluated, False
+                )
                 return None
 
             # Выбрать лучшего кандидата
@@ -49,6 +54,9 @@ class FindMatchUseCase:
 
             if not best_candidate:
                 await self._release_reservations([c.user_id for c in candidates])
+                await self.metrics.record_match_attempt(
+                    user_id, time.time() - start_time, candidates_evaluated, False
+                )
                 return None
 
             # Создать матч
@@ -71,13 +79,20 @@ class FindMatchUseCase:
             if other_candidates:
                 await self._release_reservations(other_candidates)
 
+            # Записать метрики
+            await self.metrics.record_match_attempt(
+                user_id, time.time() - start_time, candidates_evaluated,
+                True, match.compatibility_score
+            )
+
             return match
 
         except Exception as e:
+            await self.metrics.record_error('match_search_error', user_id)
             raise MatchingException(f"Error finding match for user {user_id}: {str(e)}")
 
-    @staticmethod
-    async def _select_best_candidate(user: User, candidates: List[User]) -> Optional[ScoredCandidate]:
+
+    async def _select_best_candidate(self, user: User, candidates: List[User]) -> Optional[ScoredCandidate]:
         """Выбрать лучшего кандидата из списка"""
         if not candidates:
             return None
@@ -97,6 +112,7 @@ class FindMatchUseCase:
 
             except Exception as e:
                 # Логируем ошибку, но продолжаем с другими кандидатами
+                await self.metrics.record_error('scoring_error', candidate.user_id)
                 logger.error(f"Error while picking best candidates: {e}")
                 continue
 
@@ -125,6 +141,7 @@ class FindMatchUseCase:
             except Exception as e:
                 # Не критичная ошибка, логируем и продолжаем
                 logger.warning(f"Error while updating user state for matched status: {e}")
+                await self.metrics.record_error('state_update_error', user_id)
 
     async def _release_reservations(self, user_ids: List[int]) -> None:
         """Освободить резервации пользователей"""
@@ -141,13 +158,15 @@ class ProcessMatchRequestUseCase:
         find_match_use_case: FindMatchUseCase,
         message_publisher: AbstractMessagePublisher,
         redis_repo: AbstractUserRepository,
-        state_repo: AbstractStateRepository
+        state_repo: AbstractStateRepository,
+        metrics_collector: AbstractMetricsCollector
     ):
 
         self.find_match_use_case = find_match_use_case
         self.message_publisher = message_publisher
         self.redis_repo = redis_repo
         self.state_repo = state_repo
+        self.metrics = metrics_collector
 
 
     async def execute(self, request: MatchRequest):
@@ -182,6 +201,7 @@ class ProcessMatchRequestUseCase:
             return await self._handle_no_match(request)
 
         except Exception as e:
+            await self.metrics.record_error('request_processing_error', request.user_id)
             # В случае ошибки отправляем в dead letter queue
             await self.message_publisher.publish_to_dead_letter(
                 request.to_dict(), # noqa
@@ -211,7 +231,7 @@ class ProcessMatchRequestUseCase:
 
             # Проверить, не истек ли запрос
             if state.is_expired(config.matching.max_wait_time):
-                await self._handle_timeout(request.user_id)
+                await self._handle_timeout(request.user_id, state)
                 return False
 
             # Проверить, не обработан ли запрос
@@ -266,7 +286,7 @@ class ProcessMatchRequestUseCase:
         if elapsed.total_seconds() >= config.matching.max_wait_time or \
                 request.retry_count >= config.matching.max_retries:
             # Превышены лимиты, уведомить о таймауте
-            await self._handle_timeout(request.user_id)
+            await self._handle_timeout(request.user_id, None, elapsed.total_seconds())
             return True
 
 
@@ -314,8 +334,20 @@ class ProcessMatchRequestUseCase:
         await self.message_publisher.publish_match_request(updated_request, delay)
 
 
-    async def _handle_timeout(self, user_id: int) -> None:
+    async def _handle_timeout(
+            self,
+            user_id: int,
+            state: Optional[UserState],
+            wait_time: float = None
+    ) -> None:
+
         """Обработать таймаут поиска"""
+        if wait_time is None and state:
+            wait_time = time.time() - state.created_at
+
+        await self.metrics.record_match_attempt(
+            user_id, wait_time or 0, 0, False
+        )
         logger.debug("Time wait for message % s expired", user_id)
         # Очистить состояние
         await self._cleanup_user_state(user_id)
@@ -329,5 +361,6 @@ class ProcessMatchRequestUseCase:
 
         except Exception as e:
             logger.error(f"Error while cleaning up user state: {e}")
+            await self.metrics.record_error('cleanup_error', user_id)
 
 

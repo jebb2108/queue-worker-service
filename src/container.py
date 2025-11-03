@@ -6,7 +6,7 @@ import redis
 from redis.asyncio import Redis as aioredis
 
 from src.application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher
+    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher, AbstractMetricsCollector
 )
 from src.application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
 from src.config import config
@@ -14,7 +14,8 @@ from src.infrastructure.repositories import (
     RedisUserRepository, MemoryStateRepository, PostgresSQLMatchRepository
 )
 
-from src.infrastructure.services import RabbitMQMessagePublisher, CurcuitBreaker, RateLimiter
+from src.infrastructure.services import RabbitMQMessagePublisher, CurcuitBreaker, RateLimiter, \
+    PrometheusMetricsCollector
 
 
 class ServiceNotRegisteredError(Exception):
@@ -143,6 +144,7 @@ class ServiceContainer:
 
         # Infrastructure services
         self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)
+        self.register_singleton(AbstractMetricsCollector, PrometheusMetricsCollector)
 
         # # Utility services
         self.register_singleton(CurcuitBreaker, CurcuitBreaker)
@@ -228,3 +230,6 @@ async def get_state_repository() -> AbstractStateRepository:
     """ Получить репозиторий состояний"""
     container = await get_container()
     return await container.get(AbstractStateRepository)
+
+async def get_metrics_collector() -> AbstractMetricsCollector:
+    """ Получить сборщик рассчетов """

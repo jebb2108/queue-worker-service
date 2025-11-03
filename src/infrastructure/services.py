@@ -1,9 +1,17 @@
 import asyncio
 import json
 import time
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
 
 import aio_pika
+from prometheus_client import Counter, Gauge, Histogram, CollectorRegistry, generate_latest, CONTENT_TYPE_LATEST
+
+from logconfig import opt_logger as log
+from src.application.interfaces import AbstractMetricsCollector
+
+
+logger = log.setup_logger(name='services')
+
 
 from logconfig import opt_logger as log
 from src.config import config
@@ -167,3 +175,341 @@ class RateLimiter:
             return True
         else:
             return False
+
+
+class PrometheusMetricsCollector(AbstractMetricsCollector):
+    """
+    Сборщик метрик для Prometheus с фокусом на метрики очереди ожидания
+    """
+
+    def __init__(self):
+        """
+        Инициализация сборщика метрик
+        """
+        self.registry = CollectorRegistry()
+
+        # Метрики очереди ожидания
+        self.queue_size = Gauge(
+            'matching_queue_size',
+            'Current size of the matching queue',
+            registry=self.registry
+        )
+
+        self.queue_wait_time = Histogram(
+            'matching_queue_wait_time_seconds',
+            'Time users spend waiting in the matching queue',
+            buckets=(1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600),  # от 1 сек до 1 часа
+            registry=self.registry
+        )
+
+        # Метрики попыток матчинга
+        self.match_attempts_total = Counter(
+            'matching_attempts_total',
+            'Total number of matching attempts',
+            ['result', 'user_gender', 'criteria_language'],
+            registry=self.registry
+        )
+
+        self.matches_found_total = Counter(
+            'matches_found_total',
+            'Total number of successful matches',
+            ['compatibility_range', 'processing_time_range'],
+            registry=self.registry
+        )
+
+        # Метрики совместимости
+        self.compatibility_score = Histogram(
+            'matching_compatibility_score',
+            'Distribution of compatibility scores for found matches',
+            buckets=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+            registry=self.registry
+        )
+
+        # Метрики производительности
+        self.processing_time = Histogram(
+            'matching_processing_time_seconds',
+            'Time spent processing matching requests',
+            buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+            registry=self.registry
+        )
+
+        self.candidates_evaluated = Histogram(
+            'matching_candidates_evaluated',
+            'Number of candidates evaluated per matching attempt',
+            buckets=(1, 5, 10, 25, 50, 100, 250, 500),
+            registry=self.registry
+        )
+
+        # Метрики ошибок
+        self.errors_total = Counter(
+            'matching_errors_total',
+            'Total number of errors by type',
+            ['error_type', 'user_id_present'],
+            registry=self.registry
+        )
+
+        # Метрики retry логики
+        self.retry_attempts_total = Counter(
+            'matching_retry_attempts_total',
+            'Total number of retry attempts',
+            ['retry_count', 'delay_range'],
+            registry=self.registry
+        )
+
+        self.retry_delay = Histogram(
+            'matching_retry_delay_seconds',
+            'Delay between retry attempts',
+            buckets=(1, 5, 10, 30, 60, 120, 300),
+            registry=self.registry
+        )
+
+        # Метрики пользователей
+        self.active_users = Gauge(
+            'matching_active_users',
+            'Number of currently active users in matching process',
+            ['status'],  # waiting, matched, timed_out
+            registry=self.registry
+        )
+
+        # Метрики по критериям поиска
+        self.criteria_usage = Counter(
+            'matching_criteria_usage_total',
+            'Usage statistics for different matching criteria',
+            ['criteria_type', 'value'],
+            registry=self.registry
+        )
+
+    async def record_match_attempt(
+        self,
+        user_id: int,
+        processing_time: float,
+        candidates_evaluated: int,
+        match_found: bool,
+        compatibility_score: float = None
+    ) -> None:
+        """
+        Записать попытку матчинга
+        :param user_id: ID пользователя
+        :param processing_time: Время обработки в секундах
+        :param candidates_evaluated: Количество оцененных кандидатов
+        :param match_found: Найден ли матч
+        :param compatibility_score: Скор совместимости (если найден)
+        """
+        try:
+            # Записываем время обработки
+            self.processing_time.observe(processing_time)
+
+            # Записываем количество оцененных кандидатов
+            self.candidates_evaluated.observe(candidates_evaluated)
+
+            # Определяем лейблы для счетчика попыток
+            result = 'success' if match_found else 'failure'
+            user_gender = 'unknown'  # В будущем можно получать из контекста
+            criteria_language = 'unknown'  # В будущем можно получать из контекста
+
+            self.match_attempts_total.labels(
+                result=result,
+                user_gender=user_gender,
+                criteria_language=criteria_language
+            ).inc()
+
+            if match_found and compatibility_score is not None:
+                # Записываем совместимость
+                self.compatibility_score.observe(compatibility_score)
+
+                # Определяем диапазоны для классификации
+                if compatibility_score >= 0.8:
+                    comp_range = 'high'
+                elif compatibility_score >= 0.6:
+                    comp_range = 'medium'
+                else:
+                    comp_range = 'low'
+
+                if processing_time <= 1.0:
+                    time_range = 'fast'
+                elif processing_time <= 5.0:
+                    time_range = 'medium'
+                else:
+                    time_range = 'slow'
+
+                self.matches_found_total.labels(
+                    compatibility_range=comp_range,
+                    processing_time_range=time_range
+                ).inc()
+
+        except Exception as e:
+            logger.error(f"Error recording match attempt metrics: {e}")
+
+    async def record_error(self, error_type: str, user_id: int = None) -> None:
+        """
+        Записать ошибку
+
+        :param error_type: Тип ошибки
+        :param user_id: ID пользователя (опционально)
+        """
+        try:
+            user_id_present = 'true' if user_id is not None else 'false'
+            self.errors_total.labels(
+                error_type=error_type,
+                user_id_present=user_id_present
+            ).inc()
+        except Exception as e:
+            logger.error(f"Error recording error metrics: {e}")
+
+    async def record_queue_size(self, size: int) -> None:
+        """
+        Записать размер очереди
+        :param size: Текущий размер очереди
+        """
+        try:
+            self.queue_size.set(size)
+        except Exception as e:
+            logger.error(f"Error recording queue size: {e}")
+
+    async def record_queue_wait_time(self, wait_time: float) -> None:
+        """
+        Записать время ожидания в очереди
+        :param wait_time: Время ожидания в секундах
+        """
+        try:
+            self.queue_wait_time.observe(wait_time)
+        except Exception as e:
+            logger.error(f"Error recording queue wait time: {e}")
+
+    async def record_retry_attempt(self, retry_count: int, delay: float) -> None:
+        """
+        Записать попытку retry
+        :param retry_count: Номер попытки retry
+        :param delay: Задержка перед следующей попыткой
+        """
+        try:
+            # Классифицируем retry count
+            if retry_count <= 1:
+                retry_range = '1'
+            elif retry_count <= 3:
+                retry_range = '2-3'
+            else:
+                retry_range = '4+'
+
+            # Классифицируем задержку
+            if delay <= 5:
+                delay_range = 'short'
+            elif delay <= 30:
+                delay_range = 'medium'
+            else:
+                delay_range = 'long'
+
+            self.retry_attempts_total.labels(
+                retry_count=retry_range,
+                delay_range=delay_range
+            ).inc()
+
+            self.retry_delay.observe(delay)
+
+        except Exception as e:
+            logger.error(f"Error recording retry metrics: {e}")
+
+    async def record_user_status_change(self, old_status: str, new_status: str) -> None:
+        """
+        Записать изменение статуса пользователя
+        :param old_status: Предыдущий статус
+        :param new_status: Новый статус
+        """
+        try:
+            # Уменьшаем счетчик старого статуса
+            if old_status:
+                self.active_users.labels(status=old_status).dec()
+
+            # Увеличиваем счетчик нового статуса
+            self.active_users.labels(status=new_status).inc()
+
+        except Exception as e:
+            logger.error(f"Error recording user status change: {e}")
+
+    async def record_criteria_usage(self, criteria_type: str, value: str) -> None:
+        """
+        Записать использование критерия поиска
+        :param criteria_type: Тип критерия (language, fluency, etc.)
+        :param value: Значение критерия
+        """
+        try:
+            self.criteria_usage.labels(
+                criteria_type=criteria_type,
+                value=str(value)
+            ).inc()
+        except Exception as e:
+            logger.error(f"Error recording criteria usage: {e}")
+
+    async def get_metrics(self) -> Dict[str, Any]:
+        """
+        Получить метрики без доступа к внутренним атрибутам
+        """
+        try:
+            metrics_data = generate_latest(self.registry)
+
+            return {
+                'prometheus_metrics': metrics_data.decode('utf-8'),
+                'content_type': CONTENT_TYPE_LATEST,
+                'timestamp': time.time()
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating metrics: {e}")
+            await self.record_error('metrics_generation_error')
+            return {
+                'error': 'Failed to generate metrics',
+                'timestamp': time.time()
+            }
+
+    @staticmethod
+    async def get_metrics_summary() -> Dict[str, Any]:
+        """
+        Получить сводку метрик без парсинга Prometheus формата
+        """
+        # Вместо парсинга внутренних значений, используйте отдельные счетчики
+        # или экспортируйте метрики в формате, удобном для парсинга
+        try:
+            return {
+                'queue_size': 0,
+                'active_users': 0,
+                'total_attempts': 0,
+                'total_errors': 0,
+                'timestamp': time.time()
+            }
+        except Exception as e:
+            logger.error(f"Error getting metrics summary: {e}")
+            return {'error': str(e)}
+
+
+    async def get_health_status(self) -> Dict[str, Any]:
+        """
+        Получить статус здоровья системы на основе метрик
+        :returns Словарь со статусом здоровья
+        """
+        try:
+            metrics = await self.get_metrics()
+
+            # Простая логика определения здоровья
+            queue_size = metrics.get('queue_size', 0)
+            error_rate = 0  # В будущем можно рассчитать на основе ошибок
+
+            health_status = 'healthy'
+            if queue_size > 1000:
+                health_status = 'warning'
+            if error_rate > 0.1:  # 10% ошибок
+                health_status = 'critical'
+
+            return {
+                'status': health_status,
+                'queue_size': queue_size,
+                'error_rate': error_rate,
+                'timestamp': time.time()
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting health status: {e}")
+            return {
+                'status': 'unknown',
+                'error': str(e),
+                'timestamp': time.time()
+            }

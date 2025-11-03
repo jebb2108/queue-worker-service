@@ -1,8 +1,10 @@
+import time
 from typing import Dict, Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
 from logconfig import opt_logger as log
+from src.application.interfaces import AbstractMetricsCollector
 from src.application.use_cases import ProcessMatchRequestUseCase
 from src.domain.exceptions import DomainException
 from src.domain.value_objects import MatchRequest
@@ -17,15 +19,19 @@ class MatchRequestHandler:
     def __init__(
             self,
             process_match_use_case: ProcessMatchRequestUseCase,
+            metrics_collecter: AbstractMetricsCollector,
             rate_limiter: RateLimiter = None,
             curcuit_breaker: CurcuitBreaker = None
     ):
         self.process_match_use_case = process_match_use_case
+        self.metrics = metrics_collecter
         self.curcuit_breaker = curcuit_breaker or CurcuitBreaker()
         self.rate_limiter = rate_limiter or RateLimiter()
 
     async def handle_message(self, data: Dict[str, Any], msg: RabbitMessage) -> None:
         """ Обрабатывать сообщения с запросом на матчинг """
+        start_time = time.time()
+        user_id = data.get('user_id', 0)
 
         try:
             # Валидация входящих данных
@@ -53,26 +59,42 @@ class MatchRequestHandler:
             )
 
             if success:
+                logger.debug(f"Successfully processed match request for user {user_id}")
                 await msg.ack()
                 return
+
             else:
+                # Записать метрики
+                logger.warning(f"Failed to process match request for user {user_id}")
+                processing_time = time.time() - start_time
+                await self.metrics.record_match_attempt(
+                    user_id, processing_time, 0, success
+                )
+
                 await msg.nack()
                 return
 
         except Exception as e:
-            logger.critical(f"Critical error processing match request: {e}")
+            logger.error(f"Critical error processing match request: {e}")
+            await self.metrics.record_error('critical_processing_error', user_id)
             await msg.nack()
 
     async def _process_request_safely(self, match_request: MatchRequest):
+        """Безопасная обработка запроса с обработкой исключений"""
         try:
             return await self.process_match_use_case.execute(match_request)
 
         except DomainException:
+            # Доменные исключения - логируем как предупреждения
+            logger.warning(f"Domain error processing request for user {match_request.user_id}")
+            await self.metrics.record_error('domain_error', match_request.user_id)
             return False
 
         except Exception as e:
-            logger.error(f"Error while safe processing message: {e}")
-            raise # Для перехвата curcuit breaker
+            # Неожиданные исключения - логируем как ошибки
+            logger.error(f"Unexpected error processing request for user {match_request.user_id}: {e}")
+            await self.metrics.record_error('unexpected_error', match_request.user_id)
+            raise # Перебрасываем для circuit breaker
 
     @staticmethod
     def _validate_message(message: Dict[str, Any]) -> bool:

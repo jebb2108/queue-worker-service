@@ -1,17 +1,15 @@
 from datetime import datetime
+from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Dict, Any
-import time
 
-from src.application.interfaces import AbstractUserRepository, AbstractStateRepository
-from src.container import get_user_repository, get_state_repository
+from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector
+from src.config import config
+from src.container import get_user_repository, get_metrics_collector
 from src.domain.entities import User
 from src.domain.exceptions import UserAlreadyInSearch
-from src.domain.value_objects import MatchRequest, UserState
+from src.domain.value_objects import MatchRequest
 from src.infrastructure.services import RabbitMQMessagePublisher
-from src.config import config
 
 router = APIRouter()
 
@@ -48,29 +46,30 @@ async def submit_match_request(
         raise HTTPException(status_code=500, detail=f"Failed to submit match request: {str(e)}")
 
 @router.get("/health")
-async def health_check() -> Dict[str, str]:
+async def health_check(
+        metrics: AbstractMetricsCollector = Depends(get_metrics_collector)
+) -> Dict[str, str]:
     """
     Проверка здоровья сервиса
     """
-    return {"status": "healthy", "service": "match_worker"}
+    return await metrics.get_health_status()
 
-@router.get("/ready")
-async def readiness_check() -> Dict[str, str]:
-    """
-    Проверка готовности сервиса
-    """
-    # Здесь можно добавить проверки подключений к Redis, RabbitMQ и т.д.
-    return {"status": "ready", "service": "match_worker"}
 
 @router.get("/metrics")
-async def get_metrics() -> Dict[str, Any]:
+async def get_metrics(
+    metrics: AbstractMetricsCollector = Depends(get_metrics_collector)
+) -> str:
     """
-    Получить метрики сервиса
+    Получить метрики сервиса в формате Prometheus
     """
-    # Заглушка для метрик
-    return {
-        "uptime": "unknown",
-        "requests_processed": 0,
-        "queue_size": 0,
-        "active_connections": 0
-    }
+    result = await metrics.get_metrics()
+    return result.get('prometheus_metrics', '')
+
+
+# @router.get("/ready")
+# async def readiness_check() -> Dict[str, str]:
+#     """
+#     Проверка готовности сервиса
+#     """
+#     # Здесь можно добавить проверки подключений к Redis, RabbitMQ и т.д.
+#     return {"status": "ready", "service": "match_worker"}

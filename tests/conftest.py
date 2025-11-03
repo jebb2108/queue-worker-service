@@ -1,11 +1,9 @@
 import pytest
 
-from src.application.use_cases import ProcessMatchRequestUseCase, FindMatchUseCase
+from src.application.use_cases import ProcessMatchRequestUseCase
 from src.container import ServiceContainer, ServiceFactory, get_container
 from src.handlers.match_handler import MatchRequestHandler
-from src.infrastructure.repositories import DatabaseMatchRepository, RedisUserRepository, PostgresSQLMatchRepository, \
-    MemoryStateRepository
-from src.infrastructure.services import RabbitMQMessagePublisher
+from src.infrastructure.services import PrometheusMetricsCollector
 
 
 @pytest.fixture
@@ -28,10 +26,19 @@ async def factory():
 
 
 @pytest.fixture
-async def message_handler():
+def metrics_collector():
+    """Фикстура для создания экземпляра PrometheusMetricsCollector"""
+    return PrometheusMetricsCollector()
+
+
+@pytest.fixture
+async def message_handler(metrics_collector):
     # return MatchRequestHandler(ProcessMatchRequestUseCase())
     container = await get_container()
     process_match_request_use_case = await container.get(ProcessMatchRequestUseCase)
-    return MatchRequestHandler(process_match_request_use_case)
+    return MatchRequestHandler(process_match_request_use_case, metrics_collector)
+
+
+
 
 

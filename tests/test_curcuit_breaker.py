@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 import time
 from src.infrastructure.services import CurcuitBreaker, CircuitBreakerOpenException

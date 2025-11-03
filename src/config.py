@@ -13,7 +13,7 @@ class MatchingConfig:
     """Конфигурация для алгоритма матчинга"""
     max_wait_time: int = 150  # секунды
     initial_delay: int = 1  # секунды
-    max_retries: int = 6
+    max_retries: int = 20
     compatibility_threshold: float = 0.7
 
     # Веса для скоринга совместимости

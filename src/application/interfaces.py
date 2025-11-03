@@ -85,3 +85,33 @@ class AbstractMessagePublisher(ABC):
    @abstractmethod
    async def publish_match_request(self, data: MatchRequest, delay: float = 0.0):
        pass
+
+
+class AbstractMetricsCollector(ABC):
+    """ Интерфейс сборщика метрик """
+
+    @abstractmethod
+    async def record_match_attempt(
+            self,
+            user_id: int,
+            processing_time: float,
+            candidates_evaluated: int,
+            match_found: bool,
+            compatibility_score: float = None
+    ) -> None:
+        """ Записать попытку матчинга """
+        pass
+
+    @abstractmethod
+    async def record_error(self, error_type: str, user_id: int = None) -> None:
+        """ Записать ошибку """
+        pass
+
+    @abstractmethod
+    async def get_metrics(self) -> Dict[str, Any]:
+        """ Получить метрики """
+        pass
+
+    @abstractmethod
+    async def get_health_status(self) -> Dict[str, Any]:
+        """ Получить статус здоровья """

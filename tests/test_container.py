@@ -8,7 +8,7 @@ from src.application.interfaces import AbstractUserRepository
 from src.application.use_cases import FindMatchUseCase
 from src.container import ServiceContainer
 from src.container import get_user_repository, get_state_repository, get_match_repository
-from src.infrastructure.repositories import RedisUserRepository, DatabaseMatchRepository, MemoryStateRepository, \
+from src.infrastructure.repositories import RedisUserRepository, MemoryStateRepository, \
     PostgresSQLMatchRepository
 
 

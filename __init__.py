@@ -5,5 +5,5 @@ Queue Worker Service
 Использует Domain-Driven Design (DDD) и принципы SOLID.
 """
 
-__version__ = "0.4.7"
+__version__ = "0.5.0"
 __author__ = "Gabriel Bouchard"
