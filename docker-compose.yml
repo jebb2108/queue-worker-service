@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   app:
@@ -21,6 +19,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
+
   promtail:
     image: grafana/promtail:latest
     container_name: promtail
@@ -84,7 +83,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-
+  
   redis:
     image: redis:7-alpine
     ports:

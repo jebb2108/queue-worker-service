@@ -2,7 +2,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from src.logconfig import opt_logger as log
 
@@ -18,7 +18,7 @@ class UserStatus(Enum):
     EXPIRED = "expired"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class MatchCriteria:
     """ Критерии поиска собеседника """
     language: str

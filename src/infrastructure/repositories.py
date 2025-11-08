@@ -10,14 +10,19 @@ from typing import List, Optional, Dict, Any, Union
 
 import asyncpg
 import redis
+import sqlalchemy
+from sqlalchemy import create_engine, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.testing.plugin.plugin_base import engines
 
 from src.application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
+    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractUnitOfWork
 )
 from src.config import config
 from src.domain.entities import User, Match
 from src.domain.exceptions import UserAlreadyInSearch
-from src.domain.value_objects import UserState, MatchCriteria
+from src.domain.value_objects import UserState, MatchCriteria, UserStatus
 from src.handlers.match_handler import logger
 
 from src.logconfig import opt_logger as log
@@ -281,6 +286,23 @@ class MemoryStateRepository(AbstractStateRepository, ABC):
 
             return None
 
+    async def update_state(self, user_id: int, new_status: UserStatus) -> None:
+        """ Обновить состояние пользователя """
+        async with self.lock:
+            state = await self.get_state(user_id)
+
+            if state:
+                updated_state = UserState(
+                    user_id=user_id,
+                    status=new_status,
+                    created_at=state.created_at,
+                    retry_count=state.retry_count,
+                    last_updated=time.time()
+                )
+                await self.save_state(updated_state)
+
+            return None
+
 
     async def delete_state(self, user_id: int) -> None:
         """Удалить состояние пользователя"""
@@ -330,6 +352,22 @@ class MemoryStateRepository(AbstractStateRepository, ABC):
         """Остановить фоновую задачу при удалении объекта"""
         if self.cleanup_task and not self.cleanup_task.done():
             self.cleanup_task.cancel()
+
+
+class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
+
+    def __init__(self):
+        super().__init__()
+
+    async def add(self, match: Match) -> None:
+        self._session.add(match)
+
+    async def get(self, match_id: str) -> dict:
+        stmt = select(Match).where(Match.match_id == match_id) # noqa
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none
+
+
 
 
 class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
@@ -398,8 +436,3 @@ class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
                 "UPDATE match_sessions SET status = $1 WHERE session_id = $2",
                 status, match_id
             )
-
-
-
-
-

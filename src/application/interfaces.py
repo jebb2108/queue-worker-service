@@ -1,30 +1,31 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
-from src.domain.entities import User
-from src.domain.value_objects import UserState, MatchRequest
+if TYPE_CHECKING:
+    from src.domain.entities import User, Match
+    from src.domain.value_objects import UserState, MatchRequest, UserStatus
 
 
 class AbstractUserRepository(ABC):
     """Интерфейс репозитория пользователей"""
 
     @abstractmethod
-    async def save(self, user: User) -> None:
+    async def save(self, user: "User") -> None:
         """Сохранить пользователя"""
         pass
 
     @abstractmethod
-    async def find_by_id(self, user_id: int) -> Optional[User]:
+    async def find_by_id(self, user_id: int) -> Optional["User"]:
         """Найти пользователя по ID"""
         pass
 
     @abstractmethod
-    async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
+    async def find_compatible_users(self, user: "User", limit: int = 50) -> List["User"]:
         """Найти совместимых пользователей"""
         pass
 
     @abstractmethod
-    async def add_to_queue(self, user: User) -> None:
+    async def add_to_queue(self, user: "User") -> None:
         """Добавить пользователя в очередь поиска"""
         pass
 
@@ -58,32 +59,54 @@ class AbstractUserRepository(ABC):
 
 
 class AbstractMatchRepository(ABC):
-    pass
+
+    def __init__(self):
+        self._session = None
+
+    def init(self, session):
+        if self._session is None:
+            self._session = session
+
+    @abstractmethod
+    def add(self, macth: "Match"):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get(self, session_id: str):
+        raise NotImplementedError
 
 
 class AbstractStateRepository(ABC):
 
     @abstractmethod
-    async def save_state(self, state: UserState) -> None:
-        pass
+    async def get_state(self, user_id: int) -> Optional["UserState"]:
+        raise NotImplementedError
 
     @abstractmethod
-    async def get_state(self, user_id: int) -> Optional[UserState]:
-        pass
+    async def update_state(self, user_id: int, new_state: "UserStatus"):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def save_state(self, state: "UserState") -> None:
+        raise NotImplementedError
 
     @abstractmethod
     async def delete_state(self, user_id: int) -> None:
-        pass
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list_states(self):
+        raise NotImplementedError
 
 
 class AbstractMessagePublisher(ABC):
 
    @abstractmethod
-   async def publish_to_dead_letter(self, data: MatchRequest, err_msg: str):
+   async def publish_to_dead_letter(self, data: "MatchRequest", err_msg: str):
        pass
 
    @abstractmethod
-   async def publish_match_request(self, data: MatchRequest, delay: float = 0.0):
+   async def publish_match_request(self, data: "MatchRequest", delay: float = 0.0):
        pass
 
 
@@ -103,8 +126,33 @@ class AbstractMetricsCollector(ABC):
         pass
 
     @abstractmethod
+    async def record_queue_wait_time(self, wait_time: int) -> None:
+        """Записать время ожидания в очереди"""
+        pass
+
+    @abstractmethod
+    async def record_retry_attempt(self, retry_count: int, delay: float) -> None:
+        """ Записать количество повторов"""
+        pass
+
+    @abstractmethod
+    async def record_queue_size(self, queue_size: int) -> None:
+        """ Записать размер очереди ожидания"""
+        pass
+
+    @abstractmethod
     async def record_error(self, error_type: str, user_id: int = None) -> None:
         """ Записать ошибку """
+        pass
+
+    @abstractmethod
+    async def record_user_status_change(self, old_status: "UserStatus", new_status: "UserStatus") -> None:
+        """ Записать изменения в статусе поиска """
+        pass
+
+    @abstractmethod
+    async def record_criteria_usage(self, criteria_type: str, value: str) -> None:
+        """ Заполнить измения в критериях """
         pass
 
     @abstractmethod
@@ -116,3 +164,30 @@ class AbstractMetricsCollector(ABC):
     async def get_health_status(self) -> Dict[str, Any]:
         """ Получить статус здоровья """
         pass
+
+
+class AbstractUnitOfWork(ABC):
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self):
+        await self.rollback()
+
+    async def update(self, user_ids: List[int], new_state: "UserStatus"):
+        await self._update(user_ids, new_state)
+
+    async def commit(self):
+        await self._commit()
+
+    @abstractmethod
+    async def rollback(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def _commit(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def _update(self, user_ids, new_state):
+        raise NotImplementedError
