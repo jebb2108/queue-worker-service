@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher,
-    AbstractMetricsCollector
+    AbstractMetricsCollector, AbstractUnitOfWork
 )
 from src.application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
 from src.config import config
@@ -20,6 +20,7 @@ from src.infrastructure.repositories import (
 )
 from src.infrastructure.services import RabbitMQMessagePublisher, CurcuitBreaker, RateLimiter, \
     PrometheusMetricsCollector
+from src.infrastructure.unit_of_work import SQLAlchemyUnitOfWork
 
 
 class ServiceNotRegisteredError(Exception):
@@ -156,6 +157,7 @@ class ServiceContainer:
         self.register_singleton(AbstractStateRepository, MemoryStateRepository)
 
         # Infrastructure services
+        self.register_singleton(AbstractUnitOfWork, SQLAlchemyUnitOfWork)
         self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)
         self.register_singleton(AbstractMetricsCollector, PrometheusMetricsCollector)
 
@@ -201,7 +203,7 @@ class ServiceFactory:
         redis_client = redis.Redis.from_url(config.redis.url)
 
         # PostgreSQL
-        db_pool = await asyncpg.create_pool(config.database.url)
+        db_pool = await asyncpg.create_pool(config.database.url.replace('+asyncpg', ''))
 
         return { "redis": redis_client, "database": db_pool }
 

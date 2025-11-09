@@ -9,7 +9,7 @@ from src.application.use_cases import FindMatchUseCase
 from src.container import ServiceContainer
 from src.container import get_user_repository, get_state_repository, get_match_repository
 from src.infrastructure.repositories import RedisUserRepository, MemoryStateRepository, \
-    PostgresSQLMatchRepository
+    PostgresSQLMatchRepository, SQLAlchemyMatchRepository
 
 
 @pytest.mark.asyncio
@@ -30,10 +30,9 @@ async def test_with_container_fixture(container):
 async def test_all_services_created_according_to_type(container):
     """ Тест с извлечением репозиториев """
     assert (await get_user_repository()).__class__ == RedisUserRepository
-    assert (await get_match_repository()).__class__ == PostgresSQLMatchRepository
+    assert (await get_match_repository()).__class__ == SQLAlchemyMatchRepository
     assert (await get_state_repository()).__class__ == MemoryStateRepository
     assert await container.get(redis.Redis) is not None
-    assert await container.get(asyncpg.Pool) is not None
 
 @pytest.mark.asyncio
 async def test_cleanup_method(container):

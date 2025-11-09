@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from src.container import cleanup_container, get_container
 from src.domain.entities import Match, User
 from src.domain.value_objects import MatchCriteria
 from src.infrastructure.repositories import SQLAlchemyMatchRepository
@@ -14,15 +15,10 @@ from sqlalchemy.orm import selectinload
 
 logger = log.setup_logger(name="TEST_ORM")
 
-fake_match_id = None
-
 
 def create_mtach() -> Match:
-    global fake_match_id
-
     # Используем уникальный ID для каждого теста
-    if not fake_match_id:
-        fake_match_id = str(uuid.uuid4())
+    fake_match_id = str(uuid.uuid4())
 
     fake_criteria = MatchCriteria(
         language='english', fluency=0,
@@ -51,6 +47,7 @@ def create_mtach() -> Match:
 
 @pytest.mark.asyncio
 async def test_unit_of_work_with_adding_match():
+    await cleanup_container()
 
     uow = SQLAlchemyUnitOfWork()
 
@@ -64,10 +61,12 @@ async def test_unit_of_work_with_adding_match():
         this_match = await uow.matches.get(match.match_id)
 
     assert this_match is not None
+    await cleanup_container()
 
 
 @pytest.mark.asyncio
 async def test_db_version_by_adding_match_to_repository():
+    await cleanup_container()
 
     uow = SQLAlchemyUnitOfWork()
 
@@ -81,3 +80,4 @@ async def test_db_version_by_adding_match_to_repository():
         curr_version = await uow.matches.version()
 
     assert initial_version + 1 == curr_version
+    await cleanup_container()

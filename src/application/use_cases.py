@@ -142,7 +142,7 @@ class ProcessMatchRequestUseCase:
         self.message_publisher = message_publisher
         self.redis_repo = redis_repo
         self.state_repo = state_repo
-        self.uow = unit_of_work
+        self.unit_of_work = unit_of_work
         self.metrics = metrics_collector
 
 

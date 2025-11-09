@@ -1,7 +1,9 @@
 import pytest
 
-from src.infrastructure.services import PrometheusMetricsCollector
+from src.application.use_cases import ProcessMatchRequestUseCase
+from src.container import get_container
 
+from src.infrastructure.services import PrometheusMetricsCollector
 
 @pytest.fixture
 async def container():
@@ -22,6 +24,16 @@ async def factory():
     """ Фикстура для создания тестовой фабрики """
     from src.container import ServiceFactory
     return ServiceFactory()
+
+@pytest.fixture
+async def message_handler():
+    from src.handlers.match_handler import MatchRequestHandler
+    from src.infrastructure.services import PrometheusMetricsCollector, RateLimiter, CurcuitBreaker
+    container = await get_container()
+    process_match_handler = await container.get(ProcessMatchRequestUseCase)
+    metrics_handler = PrometheusMetricsCollector()
+    rate_limiter, curcuit_breaker = RateLimiter(), CurcuitBreaker()
+    return MatchRequestHandler(process_match_handler, metrics_handler, rate_limiter, curcuit_breaker)
 
 
 @pytest.fixture

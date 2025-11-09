@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.application.interfaces import AbstractUnitOfWork, AbstractUserRepository, AbstractMatchRepository, \
     AbstractStateRepository
-from src.container import get_container
 from src.domain.value_objects import UserStatus
 
 
@@ -18,6 +17,7 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
 
     async def initialize(self):
         """ Инициализирует необходимые ресурсы """
+        from src.container import get_container
         # Вызывает контейнер
         container = await get_container()
         # Вызывает различные репозитории
