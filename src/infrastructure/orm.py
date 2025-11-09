@@ -1,9 +1,17 @@
-from sqlalchemy import MetaData, Table, Column, String, BigInteger, Float, DateTime, Integer, SmallInteger, ARRAY, \
+import sqlalchemy
+from sqlalchemy import (
+    MetaData, Table, Column, String, BigInteger,
+    Float, DateTime, SmallInteger, ARRAY,
     Boolean, ForeignKey, Enum
+)
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import registry, Relationship
 
 from src.domain.entities import Match, User
-from src.domain.value_objects import MatchCriteria, UserState, UserStatus
+from src.domain.value_objects import MatchCriteria, UserStatus
+from src.logconfig import opt_logger as log
+
+logger = log.setup_logger(name="ORM")
 
 mapper_registry = registry()
 metadata = MetaData()
@@ -44,9 +52,37 @@ match_sessions = Table(
     Column('status', String(50), nullable=False)
 )
 
-def start_mappers():
-    from sqlalchemy.orm import clear_mappers
-    clear_mappers()
+async def create_tables():
+    """ Создает таблицы в базе данных """
+    from src.container import get_container
+    container = await get_container()
+    engine = await container.get(sqlalchemy.Engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(metadata.create_all)
+    logger.debug("Database tables created successfully")
+
+
+async def drop_tables():
+    """ Удаляет таблицы из базы данных """
+    from src.container import get_container
+    container = await get_container()
+    engine = await container.get(AsyncEngine)
+    async with engine.begin() as conn:
+        await conn.run_sync(metadata.drop_all)
+    logger.debug("Database tables dropped successfully")
+
+
+
+# Флаг для отслеживания инициализации мапперов
+_mappers_initialized = False
+
+
+async def start_mappers():
+    """ Инициализирует мапперы только один раз """
+    global _mappers_initialized
+    
+    if _mappers_initialized: return
+
     # Маппинг критериев
     mapper_registry.map_imperatively(MatchCriteria, criteria_matches)
     # Маппинг пользователей
@@ -58,3 +94,8 @@ def start_mappers():
         'user1': Relationship(User, foreign_keys=[match_sessions.c.user1_id]),
         'user2': Relationship(User, foreign_keys=[match_sessions.c.user2_id])
     })
+
+    _mappers_initialized = True
+
+    
+    await create_tables()

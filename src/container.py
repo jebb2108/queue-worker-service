@@ -4,17 +4,20 @@ from typing import Type, Any, Dict, Optional
 
 import asyncpg
 import redis
+import sqlalchemy
 from redis.asyncio import Redis as aioredis
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from src.application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher, AbstractMetricsCollector
+    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher,
+    AbstractMetricsCollector
 )
 from src.application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
 from src.config import config
+from src.infrastructure.orm import start_mappers
 from src.infrastructure.repositories import (
-    RedisUserRepository, MemoryStateRepository, PostgresSQLMatchRepository
+    RedisUserRepository, MemoryStateRepository, SQLAlchemyMatchRepository
 )
-
 from src.infrastructure.services import RabbitMQMessagePublisher, CurcuitBreaker, RateLimiter, \
     PrometheusMetricsCollector
 
@@ -56,12 +59,12 @@ class ServiceContainer:
         self._services[interface] = (implementation, False)
 
     def register_instance(self, interface: Type, instance: Any):
-        """Зарегистрировать готовый экземпляр"""
+        """ Зарегистрировать готовый экземпляр """
         self._singletons[interface] = instance
         self._services[interface] = (type(instance), True)
 
     async def get(self, interface: Type):
-        """Получить экземпляр сервиса"""
+        """ Получить экземпляр сервиса """
         if interface not in self._services:
             raise ServiceNotRegisteredError(f"Service {interface.__name__} not registered")
 
@@ -75,7 +78,7 @@ class ServiceContainer:
 
 
     async def _create_instance(self, implementation: Type):
-        """Создать экземпляр с dependency injection"""
+        """ Создать экземпляр с dependency injection """
 
         # Получить параметры конструктора
         sig = inspect.signature(implementation.__init__)
@@ -124,21 +127,24 @@ class ServiceContainer:
                 decode_responses=True
             )
             self.register_instance(redis.Redis, redis_client)
+
         except Exception as e:
             logging.warning(f"Failed to connect to Redis: {e}. Proceeding without Redis connection.")
 
-        # PostgreSQL подключение
+        # SQLAlchemy подключение
         try:
-            db_pool = await asyncpg.create_pool(
-                config.database.url,
-                min_size=config.database.min_size,
-                max_size=config.database.max_size,
-                timeout=config.database.timeout,
-                command_timeout=config.database.command_timeout
-            )
-            self.register_instance(asyncpg.Pool, db_pool)
+            await start_mappers()
+
+            engine = create_async_engine(
+            url=config.database.url,
+            isolation_level="REPEATABLE READ"
+        )
+            self.register_instance(sqlalchemy.Engine, engine)
+            session_factory = async_sessionmaker(engine)
+            self.register_instance(async_sessionmaker, session_factory)
+
         except Exception as e:
-            logging.warning(f"Failed to connect to PostgreSQL: {e}. Proceeding without database connection.")
+            logging.warning(f"Failed to connect to SQLAlhemy: {e}. Proceeding without database connection.")
 
 
     async def _register_services(self):
@@ -146,7 +152,7 @@ class ServiceContainer:
 
         # Repositories
         self.register_singleton(AbstractUserRepository, RedisUserRepository)
-        self.register_singleton(AbstractMatchRepository, PostgresSQLMatchRepository)
+        self.register_singleton(AbstractMatchRepository, SQLAlchemyMatchRepository)
         self.register_singleton(AbstractStateRepository, MemoryStateRepository)
 
         # Infrastructure services
@@ -170,6 +176,8 @@ class ServiceContainer:
             await self._singletons[redis.Redis].aclose()
         if asyncpg.Pool in self._singletons:
             await self._singletons[asyncpg.Pool].close()
+        if sqlalchemy.Engine in self._singletons:
+            await self._singletons[sqlalchemy.Engine].dispose()
 
         # Очистить состояния
         self._singletons.clear()

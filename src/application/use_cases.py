@@ -63,6 +63,9 @@ class FindMatchUseCase:
                 )
                 return None
 
+            # Очищаем из резерва IDs текущего участника и партнера
+            await self.user_repo.release_reservations([user_id, best_candidate.candidate.user_id])
+
             # Создать матч
             match = Match.create(
                 user, best_candidate.candidate, best_candidate.score.total_score
@@ -160,25 +163,26 @@ class ProcessMatchRequestUseCase:
                 return True
 
             async with self.uow:
-
-                user_ids = []  # IDs пользователей на обновление
                 try:
                     # поаытаться найти матч
                     match: Match = await self.find_match_use_case.execute(request.user_id)
 
                     if match:
                         # Сохраняет матч в репозиторий
-                        self.uow.matches.add(match)
-                        user_ids.extend([
-                            match.user1.user_id,
-                            match.user2.user_id,
-                        ])
-                        return True  # Матч найден, обработка завершена
+                        await self.uow.matches.add(match)
+
+                        if await self.uow.matches.version() == self.uow.db_version:
+                            await self.uow.commit()
+                            return True  # Матч найден, обработка завершена
+                        else:
+                            # Пессемистичный сценарий параллелизма,
+                            # при котором никакие изменения в БД не записываются
+                            self.uow.db_version = await self.uow.matches.version()
 
                 finally:
                     # Сохраняет изменения в репозиториях
+                    user_ids = [match.user1.user_id, match.user2.user_id] if match else []
                     await self.uow.update(user_ids, UserStatus.MATCHED)
-                    await self.uow.commit()
 
 
             # Матч не найден, проверить лимиты и запланировать повтор

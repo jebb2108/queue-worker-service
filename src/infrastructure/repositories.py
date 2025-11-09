@@ -10,21 +10,16 @@ from typing import List, Optional, Dict, Any, Union
 
 import asyncpg
 import redis
-import sqlalchemy
-from sqlalchemy import create_engine, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.testing.plugin.plugin_base import engines
+from sqlalchemy import select
 
 from src.application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractUnitOfWork
+    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
 )
 from src.config import config
 from src.domain.entities import User, Match
 from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import UserState, MatchCriteria, UserStatus
-from src.handlers.match_handler import logger
-
+from src.infrastructure.orm import match_sessions as orm_match
 from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name="repositories")
@@ -362,31 +357,35 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
     async def add(self, match: Match) -> None:
         self._session.add(match)
 
-    async def get(self, match_id: str) -> dict:
+    async def get(self, match_id: str):
         stmt = select(Match).where(Match.match_id == match_id) # noqa
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none
 
-
+    async def version(self):
+        stmt = select(Match.id).order_by(orm_match.c.id.desc()).limit(1) # noqa
+        result = await self._session.execute(stmt)
+        return result.one()[0]
 
 
 class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
     """ Реализация репозитория матчей на PostgreSQL """
 
     def __init__(self):
+        super().__init__()
         self.pool = None
 
     @asynccontextmanager
-    async def get_connection(self):
+    async def acquire_connection(self):
         """ Получить соединение с базой данных """
         if self.pool is None:
             self.pool = await asyncpg.create_pool(dsn=config.database.url)
         async with self.pool.acquire() as conn:
             yield conn
 
-    async def save(self, match: Match) -> None:
+    async def add(self, match: Match) -> None:
         """ Сохранить матч в базу данных """
-        async with self.get_connection() as conn:
+        async with self.acquire_connection() as conn:
             await conn.execute(
                 """
                 INSERT INTO match_sessions 
@@ -402,37 +401,22 @@ class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
                 match.status
             )
 
-    async def find_by_id(self, match_id: str) -> Optional[Match]:
-        """ Найти матч по ID """
-        async with self.get_connection() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM match_sessions WHERE session_id = $1",
-                match_id
-            )
 
-            if not row:
-                return None
-
-            return None # TODO: Дописать результат функции
-
-    async def find_by_user_id(self, user_id: int) -> List[Match]:
-        """ Найти матчи пользователя """
-        async with self.get_connection() as conn:
-            rows = await conn.fetch(
+    async def get(self, match_id: str) -> Match:
+        """ Получить сведения о пользователе """
+        async with self.acquire_connection() as conn:
+            match_fields = await conn.fetchrow(
                 """
-                SELECT * FROM match_sessions
-                WHERE user1_id = $1 OR user2_id = $1
-                ORDER BY created_at DESC
-                """,
-                user_id
+                SELECT
+                    session_id, user1_id, user2_id, room_id
+                    ,compatibility_score, created_at, status
+                FROM match_sessions
+                WHERE match_id = $1 AND status = 'active'
+                """
             )
-
-            return [] # TODO: Дописать результат функции
-
-    async def update_status(self, match_id: str, status: str) -> None:
-        """ Обновить статус матча """
-        async with self.get_connection() as conn:
-            await conn.execute(
-                "UPDATE match_sessions SET status = $1 WHERE session_id = $2",
-                status, match_id
+            user1_fields = await conn.fetchrow(
+                """
+                SELECT * FROM user_infos
+                """
             )
+            return None

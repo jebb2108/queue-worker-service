@@ -63,7 +63,7 @@ class AbstractMatchRepository(ABC):
     def __init__(self):
         self._session = None
 
-    def init(self, session):
+    async def pass_session(self, session):
         if self._session is None:
             self._session = session
 
@@ -92,10 +92,6 @@ class AbstractStateRepository(ABC):
 
     @abstractmethod
     async def delete_state(self, user_id: int) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def list_states(self):
         raise NotImplementedError
 
 
@@ -168,20 +164,29 @@ class AbstractMetricsCollector(ABC):
 
 class AbstractUnitOfWork(ABC):
 
+    def __init__(self):
+        """ Дефолтные атрибуты """
+        self.matches = None
+        self.states = None
+        self.queue = None
+        # Счетчик версий БД
+        self.db_version = 0
+
     async def __aenter__(self):
         return self
 
     async def __aexit__(self):
-        await self.rollback()
+        await self._rollback()
 
     async def update(self, user_ids: List[int], new_state: "UserStatus"):
         await self._update(user_ids, new_state)
 
     async def commit(self):
+        self.db_version += 1
         await self._commit()
 
     @abstractmethod
-    async def rollback(self):
+    async def _rollback(self):
         raise NotImplementedError
 
     @abstractmethod
