@@ -142,7 +142,7 @@ class ProcessMatchRequestUseCase:
         self.message_publisher = message_publisher
         self.redis_repo = redis_repo
         self.state_repo = state_repo
-        self.unit_of_work = unit_of_work
+        self.uow = unit_of_work
         self.metrics = metrics_collector
 
 
@@ -163,27 +163,26 @@ class ProcessMatchRequestUseCase:
                 return True
 
             async with self.uow:
-                try:
-                    # поаытаться найти матч
-                    match: Match = await self.find_match_use_case.execute(request.user_id)
 
-                    if match:
-                        # Сохраняет матч в репозиторий
-                        await self.uow.matches.add(match)
+                # поаытаться найти матч
+                match: Match = await self.find_match_use_case.execute(request.user_id)
 
-                        if await self.uow.matches.version() == self.uow.db_version:
-                            await self.uow.commit()
-                            return True  # Матч найден, обработка завершена
-                        else:
-                            # Пессемистичный сценарий параллелизма,
-                            # при котором никакие изменения в БД не записываются
-                            self.uow.db_version = await self.uow.matches.version()
+                if match:
+                    # Сохраняет матч в репозиторий
+                    await self.uow.matches.add(match)
+                    # Сверяет версии БД и UoW, чтобы исключить параллелизм
+                    if await self.uow.matches.version() == self.uow.db_version:
+                        # Производит фианльный комит в БД
+                        await self.uow.commit()
+                        # Сохраняет изменения в репозиториях
+                        user_ids = [match.user1.user_id, match.user2.user_id] if match else []
+                        await self.uow.update(user_ids, UserStatus.MATCHED)
+                        return True  # Матч найден, обработка завершена
 
-                finally:
-                    # Сохраняет изменения в репозиториях
-                    user_ids = [match.user1.user_id, match.user2.user_id] if match else []
-                    await self.uow.update(user_ids, UserStatus.MATCHED)
-
+                    else:
+                        # Пессемистичный сценарий параллелизма,
+                        # при котором никакие изменения в БД не записываются
+                        self.uow.db_version = await self.uow.matches.version()
 
             # Матч не найден, проверить лимиты и запланировать повтор
             return await self._handle_no_match(request)
