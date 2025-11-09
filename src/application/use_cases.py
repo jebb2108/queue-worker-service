@@ -162,7 +162,7 @@ class ProcessMatchRequestUseCase:
                 logger.debug('Msg after scheduled retry processed')
                 return True
 
-            async with self.uow:
+            async with self.uow: # обеспечивает атомарность
 
                 # поаытаться найти матч
                 match: Match = await self.find_match_use_case.execute(request.user_id)
@@ -171,7 +171,7 @@ class ProcessMatchRequestUseCase:
                     # Сохраняет матч в репозиторий
                     await self.uow.matches.add(match)
                     # Сверяет версии БД и UoW, чтобы исключить параллелизм
-                    if await self.uow.matches.version() == self.uow.db_version:
+                    if await self.uow.matches.version() == self.uow.db_version + 1:
                         # Производит фианльный комит в БД
                         await self.uow.commit()
                         # Сохраняет изменения в репозиториях
