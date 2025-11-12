@@ -100,11 +100,17 @@ class RabbitMQMessagePublisher:
     async def declare_exchanges_and_queues(self):
         """ Объявление всех обменников и очередей """
 
+        # Основной exchange и очередь
         self.default_exchange = await self.channel.declare_exchange(
             name=config.rabbitmq.match_exchange, type="direct"
         )
         main_queue = await self.channel.declare_queue(name=config.rabbitmq.match_queue)
         await main_queue.bind(self.default_exchange, config.rabbitmq.match_queue)
+
+        # Exchange для задержки сообщений
+        self.delay_exchange = await self.channel.declare_exchange(
+            name="delay_exchange", type="direct"
+        )
 
 
     async def publish_match_request(self, data: MatchRequest, delay: float = 0.0):
@@ -115,16 +121,40 @@ class RabbitMQMessagePublisher:
         json_message = json.dumps(data.to_dict()).encode()
 
         if delay > 0:
-            # Используем delayed exchange или dead letter exchange для задержки
-            # Для простоты используем asyncio.sleep, но в продакшене лучше использовать RabbitMQ delayed message plugin
-            await asyncio.sleep(delay)
+            # Используем dead letter exchange для задержки
+            # Создаем временную очередь с TTL и dead letter exchange
+            delay_queue_name = f"delay_queue_{int(delay)}_{data.user_id}"
 
-        await self.default_exchange.publish(
-            aio_pika.Message(
-                body=json_message, delivery_mode=aio_pika.DeliveryMode.PERSISTENT
-            ),
-            routing_key=config.rabbitmq.match_queue,
-        )
+            # Объявляем временную очередь с TTL
+            delay_queue = await self.channel.declare_queue(
+                name=delay_queue_name,
+                arguments={
+                    "x-message-ttl": int(delay * 1000),  # TTL в миллисекундах
+                    "x-dead-letter-exchange": config.rabbitmq.match_exchange,  # Куда отправить после TTL
+                    "x-dead-letter-routing-key": config.rabbitmq.match_queue,  # Routing key для основной очереди
+                    "x-expires": int(delay * 1000) + 5000  # Очередь удалится через TTL + 5 сек
+                }
+            )
+
+            # Привязываем delay exchange к delay очереди
+            await delay_queue.bind(self.delay_exchange, delay_queue_name)
+
+            # Публикуем в delay exchange, который маршрутизирует в delay очередь
+            await self.delay_exchange.publish(
+                aio_pika.Message(
+                    body=json_message,
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                ),
+                routing_key=delay_queue_name,  # Routing key совпадает с именем очереди
+            )
+        else:
+            # Публикуем напрямую в основную очередь
+            await self.default_exchange.publish(
+                aio_pika.Message(
+                    body=json_message, delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                ),
+                routing_key=config.rabbitmq.match_queue,
+            )
 
     async def publish_to_dead_letter(self, data: MatchRequest, err_msg: str):
         await self.connect()

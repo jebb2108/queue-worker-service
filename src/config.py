@@ -5,8 +5,7 @@ from typing import Dict
 
 from dotenv import load_dotenv
 
-load_dotenv(""".env""")
-
+load_dotenv("""../.env""")
 
 @dataclass
 class MatchingConfig:

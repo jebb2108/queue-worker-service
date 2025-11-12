@@ -33,8 +33,10 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
         if not self._initialized: await self.initialize()
         # Получаю фабрику сессии из контейнера (уже настроенную)
         self.session = self.session_factory()
+        # Начать транзакцию для сессии к БД
+        self._transaction = await self.session.begin()
         # Передаю сессию репозиторию, ответсвенному за БД
-        await self.matches.pass_session(self.session)
+        await self.matches.pass_session(self._transaction)
         # Наследую родительский класс
         return await super().__aenter__()
 
@@ -43,6 +45,12 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
             # Сначала пытается выполнить
             # rollback из родительского класса
             await super().__aexit__()
+
+        except Exception:
+            # Если было исключение, явно rollback
+            await self._transaction.rollback()
+            raise
+
         finally:
             # Закрытие сессии при любом исходе
             await self.session.close()
@@ -57,9 +65,9 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
 
 
     async def _rollback(self):
-        await self.session.rollback()
+        await self._transaction.rollback()
 
 
     async def _commit(self):
-        await self.session.commit()
+        await self._transaction.commit()
 

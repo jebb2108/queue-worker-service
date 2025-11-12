@@ -31,7 +31,7 @@ class WorkerService:
             self.container = await get_container()
 
             # Создать брокер сообщений
-            self.broker = RabbitBroker(url=config.rabbitmq.url, logger=logger)
+            self.broker = RabbitBroker(url=config.rabbitmq.url, logger=None)
 
             # Создать обработчики
             await self._create_handlers()

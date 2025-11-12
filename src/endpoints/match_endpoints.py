@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends, status, Response
-from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST
+from pydantic import BaseModel, Field
 
 from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector
 from src.config import config
@@ -56,7 +56,7 @@ async def submit_match_request(
             'criteria': request_data.criteria,
             'lang_code': request_data.lang_code,
             'created_at': datetime.now(tz=config.timezone).isoformat(),
-            'status': config.SEARCH_STARTED
+            'status': 'waiting'
         }
 
         # Отправить в очередь ожидания

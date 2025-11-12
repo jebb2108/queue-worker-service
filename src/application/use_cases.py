@@ -133,8 +133,8 @@ class ProcessMatchRequestUseCase:
         find_match_use_case: FindMatchUseCase,
         message_publisher: AbstractMessagePublisher,
         redis_repo: AbstractUserRepository,
-        unit_of_work: AbstractUnitOfWork,
         state_repo: AbstractStateRepository,
+        unit_of_work: AbstractUnitOfWork,
         metrics_collector: AbstractMetricsCollector
     ):
 
