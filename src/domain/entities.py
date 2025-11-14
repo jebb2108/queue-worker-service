@@ -18,20 +18,26 @@ class User:
     lang_code: str
     created_at: datetime
     status: UserStatus = UserStatus.WAITING
+    merge_key: str = None
 
     def __post_init__(self):
         if not isinstance(self.criteria, MatchCriteria):
             raise ValueError("Criteria must be a MatchCriteria instance")
+        
+        # Создай уникальный merge key, взяв за основу user_id и created_at
+        if self.merge_key is None:
+            timestamp = int(self.created_at.timestamp())
+            self.merge_key = f"{self.user_id}&{timestamp}"
 
     def is_compatible_with(self, other: 'User') -> bool:
-        """Проверка базовой совместимости с другим пользователем"""
+        """ Проверка базовой совместимости с другим пользователем """
         if self.user_id == other.user_id:
             return False
 
         return self.criteria.is_compatible_with(other.criteria)
 
     def calculate_compatibility_score(self, other: 'User', weights: dict = None) -> CompatibilityScore:
-        """Расчет детального скора совместимости"""
+        """ Расчет детального скора совместимости """
         if weights is None:
             weights = {
                 'language': 0.35,
@@ -81,7 +87,7 @@ class User:
 
     @staticmethod
     def _calculate_confidence(scores: dict) -> float:
-        """Расчет уверенности в скоре"""
+        """ Расчет уверенности в скоре """
         # Простая логика: чем больше высоких скоров, тем выше уверенность
         high_scores = sum(1 for score in scores.values() if score > 0.7)
         return min(1.0, high_scores / len(scores) + 0.2)
@@ -110,7 +116,7 @@ class User:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'User':
-        """Создание пользователя из словаря"""
+        """ Создание пользователя из словаря """
         criteria_data = data.get('criteria', {})
         criteria = MatchCriteria(
             language=criteria_data.get('language', ''),
@@ -132,7 +138,7 @@ class User:
 
 @dataclass
 class Match:
-    """Матч между двумя пользователями"""
+    """ Матч между двумя пользователями """
     match_id: str
     user1: User
     user2: User
@@ -152,7 +158,7 @@ class Match:
 
     @classmethod
     def create(cls, user1: User, user2: User, compatibility_score: float = None) -> 'Match':
-        """Фабричный метод для создания матча"""
+        """ Фабричный метод для создания матча """
         if not user1.is_compatible_with(user2):
             raise IncompatibleUsersException(
                 f"Users {user1.user_id} and {user2.user_id} are not compatible"
@@ -172,7 +178,7 @@ class Match:
         )
 
     def get_partner(self, user_id: int) -> Optional[User]:
-        """Получить партнера для указанного пользователя"""
+        """ Получить партнера для указанного пользователя """
         if self.user1.user_id == user_id:
             return self.user2
         elif self.user2.user_id == user_id:
@@ -180,11 +186,11 @@ class Match:
         return None
 
     def contains_user(self, user_id: int) -> bool:
-        """Проверить, участвует ли пользователь в матче"""
+        """ Проверить, участвует ли пользователь в матче """
         return user_id in (self.user1.user_id, self.user2.user_id)
 
     def to_dict(self) -> dict:
-        """Преобразование в словарь"""
+        """ Преобразование в словарь """
         return {
             'match_id': self.match_id,
             'user1_id': self.user1.user_id,
@@ -198,14 +204,14 @@ class Match:
 
 @dataclass
 class ScoredCandidate:
-    """Кандидат с оценкой совместимости"""
+    """ Кандидат с оценкой совместимости """
     candidate: User
     score: CompatibilityScore
 
     def __lt__(self, other: 'ScoredCandidate') -> bool:
-        """Сравнение для сортировки по скору"""
+        """ Сравнение для сортировки по скору """
         return self.score.total_score < other.score.total_score
 
     def __gt__(self, other: 'ScoredCandidate') -> bool:
-        """Сравнение для сортировки по скору"""
+        """ Сравнение для сортировки по скору """
         return self.score.total_score > other.score.total_score

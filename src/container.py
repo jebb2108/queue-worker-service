@@ -156,8 +156,8 @@ class ServiceContainer:
 
         # Repositories
         self.register_singleton(AbstractUserRepository, RedisUserRepository)
-        self.register_transient(AbstractMatchRepository, SQLAlchemyMatchRepository)
         self.register_singleton(AbstractStateRepository, MemoryStateRepository)
+        self.register_transient(AbstractMatchRepository, SQLAlchemyMatchRepository)
 
         # Infrastructure services
         self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)

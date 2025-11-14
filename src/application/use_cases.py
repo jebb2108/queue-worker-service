@@ -2,7 +2,6 @@ import time
 from datetime import datetime
 from typing import Optional, List
 
-from src.logconfig import opt_logger as log
 from src.application.interfaces import (
     AbstractUserRepository, AbstractStateRepository,
     AbstractMessagePublisher, AbstractMetricsCollector, AbstractUnitOfWork
@@ -11,6 +10,7 @@ from src.config import config
 from src.domain.entities import Match, User, ScoredCandidate
 from src.domain.exceptions import UserNotFoundException, MatchingException
 from src.domain.value_objects import MatchRequest, UserStatus, UserState
+from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='use cases')
 
@@ -176,7 +176,7 @@ class ProcessMatchRequestUseCase:
             logger.error(f"Exception in ProcessMatchRequestUseCase for user {request.user_id}: {e}")
             await self.metrics.record_error('request_processing_error', request.user_id)
             await self.message_publisher.publish_to_dead_letter(
-                request.to_dict(),
+                request.to_dict(), # noqa
                 f"Processing error: {str(e)}"
             )
             return False

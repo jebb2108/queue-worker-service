@@ -1,4 +1,3 @@
-import asyncio
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
@@ -74,10 +73,6 @@ class AbstractMatchRepository(ABC):
     @abstractmethod
     async def list(self) -> List[str]:
         """Получить список всех match_id из таблицы match_sessions"""
-        raise NotImplementedError
-
-    @abstractmethod
-    async def version(self):
         raise NotImplementedError
 
 
@@ -174,8 +169,7 @@ class AbstractUnitOfWork(ABC):
         self.matches = None
         self.states = None
         self.queue = None
-        # Счетчик версий БД
-        self.db_version = 0
+        self.session = None
 
     async def __aenter__(self):
         return self
@@ -184,7 +178,6 @@ class AbstractUnitOfWork(ABC):
         await self._rollback()
 
     async def commit(self):
-        self.db_version += 1
         await self._commit()
 
     @abstractmethod

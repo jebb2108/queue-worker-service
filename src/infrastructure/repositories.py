@@ -392,8 +392,17 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         self._session = session
 
     async def add(self, match: Match) -> None:
-        self._session.add(match)
-        logger.debug(f"Match {match.match_id} added to session")
+        try:
+            match.user1 = await self._session.merge(match.user1)
+            match.user2 = await self._session.merge(match.user2)
+            # Flush, чтобы убедиться, что добавление возможно
+            await self._session.flush()
+        except:
+            logger.debug(f"Match {match.match_id} didn`t merge")
+            raise
+        else:
+            self._session.add(match)
+            logger.debug(f"Match {match.match_id} added to session")
 
     async def get(self, match_id: str):
         stmt = select(Match).where(Match.match_id == match_id)  # noqa
@@ -401,18 +410,9 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         return result.scalar_one_or_none()
 
     async def list(self) -> List[str]:
-        """Получить список всех match_id из таблицы match_sessions"""
+        """ Получить список всех match_id из таблицы match_sessions """
         stmt = select(orm_match.c.match_id) # noqa
         result = await self._session.execute(stmt)
         match_ids = result.scalars().all()
         logger.debug(f"Found {len(match_ids)} match_ids: {match_ids}")
         return list(match_ids)
-
-
-    async def version(self):
-        from sqlalchemy import func
-        stmt = select(func.count(orm_match.c.match_id)) # noqa
-        result = await self._session.execute(stmt)
-        version = result.scalar_one()
-        logger.debug(f"Resulted version for match: {version}")
-        return version

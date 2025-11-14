@@ -15,9 +15,6 @@ from src.infrastructure.repositories import SQLAlchemyMatchRepository
 
 logger = log.setup_logger('uow')
 
-# Configuration for UoW timeout (in seconds)
-UOW_TIMEOUT = 30
-
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
     """ Unit Of Work класс для атомарных операуий с sqlalchemy """
@@ -32,8 +29,6 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
         self.session_factory = session_factory
         self.queue = user_repository
         self.states = state_repository
-        self.committed = False
-        self.session = None
         logger.debug(f"UoW instance created: {id(self)}")
 
     async def __aenter__(self):
