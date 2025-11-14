@@ -152,7 +152,12 @@ class RedisUserRepository(AbstractUserRepository, ABC):
             return []
 
     async def reserve_candidate(self, user_id: int, candidate_id: int) -> bool:
-        """Атомарно зарезервировать пару пользователей"""
+        """
+        Атомарно зарезервировать пару пользователей
+        
+        Возвращает True если резервация успешна, False если один из пользователей
+        уже не в очереди (был зарезервирован другим матчем)
+        """
         reserve_script = """
         local queue_key = KEYS[1]
         local user_id = ARGV[1]
@@ -166,15 +171,19 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         for i, member_id in ipairs(queue_members) do
             if member_id == user_id then user_in_queue = true end
             if member_id == candidate_id then candidate_in_queue = true end
+            -- Оптимизация: выходим, если нашли обоих
+            if user_in_queue and candidate_in_queue then break end
         end
 
         if not user_in_queue or not candidate_in_queue then
             return 0
         end
 
-        -- Атомарно удаляем обоих
+        -- Атомарно удаляем обоих из очереди
         redis.call('LREM', queue_key, 1, user_id)
         redis.call('LREM', queue_key, 1, candidate_id)
+        
+        -- Удаляем флаги поиска
         redis.call('DEL', 'searching:' .. user_id)
         redis.call('DEL', 'searching:' .. candidate_id)
 
@@ -199,7 +208,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
             return False
 
     async def find_and_reserve_match(self, user: User) -> Optional[User]:
-        """Атомарно найти и зарезервировать совместимого пользователя"""
+        """ Атомарно найти и зарезервировать совместимого пользователя """
         logger.debug(f"Finding and reserving match for user {user.user_id}")
 
         # Lua скрипт для атомарного поиска и резервации

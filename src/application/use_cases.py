@@ -58,37 +58,48 @@ class FindMatchUseCase:
             
             logger.debug(f"Found {candidates_count} compatible candidates for user {user_id}")
             
-            # Выбрать лучшего кандидата используя _select_best_candidate
-            best_candidate = await self._select_best_candidate(user, candidates)
+            # Получить отсортированный список кандидатов
+            scored_candidates = await self._select_best_candidates(user, candidates)
             
-            if not best_candidate:
+            if not scored_candidates:
                 logger.debug(f"No candidate passed compatibility threshold for user {user_id}")
                 await self.metrics.record_match_attempt(
                     user_id, time.time() - start_time, candidates_count, False
                 )
                 return None
             
-            # Атомарно зарезервировать выбранного кандидата
-            reserved = await user_repo.reserve_candidate(user_id, best_candidate.candidate.user_id)
-            
-            if not reserved:
-                logger.debug(f"Failed to reserve candidate {best_candidate.candidate.user_id} for user {user_id}")
-                await self.metrics.record_match_attempt(
-                    user_id, time.time() - start_time, candidates_count, False
-                )
-                return None
-            
-            # Создать матч с уже рассчитанным скором
-            match = Match.create(user, best_candidate.candidate, best_candidate.score.total_score)
-            logger.info(f"Match created and reserved: {user_id} <-> {best_candidate.candidate.user_id} (score: {best_candidate.score.total_score})")
+            # Попытаться зарезервировать кандидатов по порядку (от лучшего к худшему)
+            # Это защищает от race condition, когда лучший кандидат уже занят
+            for scored_candidate in scored_candidates:
+                candidate_id = scored_candidate.candidate.user_id
+                
+                # Атомарно зарезервировать кандидата
+                reserved = await user_repo.reserve_candidate(user_id, candidate_id)
+                
+                if reserved:
+                    # Успешно зарезервировали - создаем матч
+                    match = Match.create(user, scored_candidate.candidate, scored_candidate.score.total_score)
+                    logger.info(f"Match created and reserved: {user_id} <-> {candidate_id} (score: {scored_candidate.score.total_score})")
+                    
+                    # Записать метрики с реальным количеством оцененных кандидатов
+                    await self.metrics.record_match_attempt(
+                        user_id, time.time() - start_time, candidates_count,
+                        True, match.compatibility_score
+                    )
+                    
+                    return match
 
-            # Записать метрики с реальным количеством оцененных кандидатов
+                else:
+                    # Кандидат уже занят, пробуем следующего
+                    logger.debug(f"Candidate {candidate_id} already taken, trying next candidate")
+                    continue
+            
+            # Все кандидаты уже заняты
+            logger.debug(f"All {len(scored_candidates)} candidates already taken for user {user_id}")
             await self.metrics.record_match_attempt(
-                user_id, time.time() - start_time, candidates_count,
-                True, match.compatibility_score
+                user_id, time.time() - start_time, candidates_count, False
             )
-
-            return match
+            return None
 
         except Exception as e:
             logger.error(f"Exception in FindMatchUseCase for user {user_id}: {e}")
@@ -96,10 +107,15 @@ class FindMatchUseCase:
             raise MatchingException(f"Error finding match for user {user_id}: {str(e)}")
 
 
-    async def _select_best_candidate(self, user: User, candidates: List[User]) -> Optional[ScoredCandidate]:
-        """ Выбрать лучшего кандидата из списка """
+    async def _select_best_candidates(self, user: User, candidates: List[User]) -> List[ScoredCandidate]:
+        """
+        Выбрать и отсортировать кандидатов по скору совместимости
+        
+        Возвращает список отсортированных кандидатов (от лучшего к худшему),
+        прошедших порог совместимости
+        """
         if not candidates:
-            return None
+            return []
 
         # Рассчитать скоры для всех кандидатов
         scored_candidates = []
@@ -118,18 +134,17 @@ class FindMatchUseCase:
             except Exception as e:
                 # Логируем ошибку, но продолжаем с другими кандидатами
                 await self.metrics.record_error('scoring_error', candidate.user_id)
-                logger.error(f"Error while picking best candidates: {e}")
+                logger.error(f"Error while scoring candidates: {e}")
                 continue
 
         if not scored_candidates:
             logger.debug(f"No candidates passed threshold {config.matching.compatibility_threshold}")
-            return None
+            return []
 
-        # Сортировать по скору и вернуть лучшего
+        # Сортировать по скору (от лучшего к худшему)
         scored_candidates.sort(reverse=True)
-        best = scored_candidates[0]
-        logger.debug(f"Best candidate selected: {best.candidate.user_id} with score {best.score.total_score}")
-        return best
+        logger.debug(f"Selected {len(scored_candidates)} candidates passing threshold, best score: {scored_candidates[0].score.total_score}")
+        return scored_candidates
 
 
 
