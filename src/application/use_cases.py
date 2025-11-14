@@ -1,11 +1,10 @@
-import asyncio
 import time
 from datetime import datetime
 from typing import Optional, List
 
 from src.logconfig import opt_logger as log
 from src.application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository,
+    AbstractUserRepository, AbstractStateRepository,
     AbstractMessagePublisher, AbstractMetricsCollector, AbstractUnitOfWork
 )
 from src.config import config
@@ -21,78 +20,56 @@ class FindMatchUseCase:
 
     def __init__(
         self,
-        user_repository: AbstractUserRepository,
-        match_repository: AbstractMatchRepository,
         state_repository: AbstractStateRepository,
         metrics_collector: AbstractMetricsCollector
     ):
-        self.user_repo = user_repository
-        self.match_repo = match_repository
         self.state_repo = state_repository
         self.metrics = metrics_collector
 
-    async def execute(self, user_id: int) -> Optional[Match]:
-        """Выполнить поиск матча для пользователя"""
+    async def execute(self, user_id: int, user_repo: AbstractUserRepository) -> Optional[Match]:
+        """ Выполнить поиск матча для пользователя """
         start_time = time.time()
         try:
             logger.debug(f"Starting match search for user {user_id}")
+            
             # Получить пользователя
-            user = await self.user_repo.find_by_id(user_id)
+            user = await user_repo.find_by_id(user_id)
             if not user:
                 logger.error(f"User {user_id} not found in repository")
                 raise UserNotFoundException(f"User {user_id} not found")
 
-            logger.debug(f"User {user_id} found, searching for compatible users")
-            # Найти совместимых кандидатов
-            candidates = await self.user_repo.find_compatible_users(user)
-            candidates_evaluated = len(candidates)
-            logger.debug(f"Found {candidates_evaluated} compatible candidates for user {user_id}")
-
+            logger.debug(f"User {user_id} found, searching and reserving match")
+            
             # Записать размер очереди
-            queue_size = await self.user_repo.get_queue_size()
+            queue_size = await user_repo.get_queue_size()
             await self.metrics.record_queue_size(queue_size)
             logger.debug(f"Queue size: {queue_size}")
-
-            if not candidates:
-                logger.debug(f"No candidates found for user {user_id}")
+            
+            # Атомарно найти и зарезервировать совместимого пользователя
+            candidate = await user_repo.find_and_reserve_match(user)
+            
+            if not candidate:
+                logger.debug(f"No match found for user {user_id}")
                 await self.metrics.record_match_attempt(
-                    user_id, time.time() - start_time, candidates_evaluated, False
+                    user_id, time.time() - start_time, 0, False
                 )
                 return None
 
-            # Выбрать лучшего кандидата
-            best_candidate = await self._select_best_candidate(user, candidates)
-            logger.debug(f"Best candidate for user {user_id}: {best_candidate.candidate.user_id if best_candidate else None}")
-
-            if not best_candidate:
-                await self.user_repo.release_reservations([c.user_id for c in candidates])
-                await self.metrics.record_match_attempt(
-                    user_id, time.time() - start_time, candidates_evaluated, False
-                )
-                return None
-
-            # Очищаем из резерва IDs текущего участника и партнера
-            await self.user_repo.release_reservations([user_id, best_candidate.candidate.user_id])
-
-            # Создать матч
-            match = Match.create(
-                user, best_candidate.candidate, best_candidate.score.total_score
+            # Рассчитать скор совместимости
+            score = user.calculate_compatibility_score(
+                candidate,
+                config.matching.scoring_weights
             )
-            logger.debug(f"Match created for users {user_id} and {best_candidate.candidate.user_id}")
+            
+            # Создать матч
+            match = Match.create(user, candidate, score.total_score)
+            logger.info(f"Match created and reserved: {user_id} <-> {candidate.user_id}")
 
             # Записать метрики
             await self.metrics.record_match_attempt(
-                user_id, time.time() - start_time, candidates_evaluated,
+                user_id, time.time() - start_time, 1,
                 True, match.compatibility_score
             )
-
-            # Освободить резервации остальных кандидатов
-            other_candidates = [
-                c.user_id for c in candidates if
-                c.user_id != best_candidate.candidate.user_id
-            ]
-            if other_candidates:
-                await self.user_repo.release_reservations(other_candidates)
 
             return match
 
@@ -103,7 +80,7 @@ class FindMatchUseCase:
 
 
     async def _select_best_candidate(self, user: User, candidates: List[User]) -> Optional[ScoredCandidate]:
-        """Выбрать лучшего кандидата из списка"""
+        """ Выбрать лучшего кандидата из списка """
         if not candidates:
             return None
 
@@ -142,152 +119,101 @@ class ProcessMatchRequestUseCase:
         self,
         find_match_use_case: FindMatchUseCase,
         message_publisher: AbstractMessagePublisher,
-        redis_repo: AbstractUserRepository,
-        state_repo: AbstractStateRepository,
-        unit_of_work: AbstractUnitOfWork,
         metrics_collector: AbstractMetricsCollector
     ):
 
         self.find_match_use_case = find_match_use_case
         self.message_publisher = message_publisher
-        self.redis_repo = redis_repo
-        self.state_repo = state_repo
-        self.uow = unit_of_work
         self.metrics = metrics_collector
 
 
-    async def execute(self, request: MatchRequest):
+    async def execute(self, request: MatchRequest, uow: AbstractUnitOfWork):
         """ Обработать запрос на матчинг """
         try:
             logger.debug(f"Processing match request for user {request.user_id}")
 
-            #  Проверить состояние пользователя
-            should_process = await self._should_process_request(request)
-            logger.debug(f"Should process request for user {request.user_id}: {should_process}")
-
+            # Проверить состояние пользователя
+            should_process = await self._should_process_request(request, uow)
             if not should_process:
-                logger.debug("Request either proccessed or rejected")
-                return True # Запрос обработан (отклонен или отложен)
-
-
-            if await self._should_delay_processing(request):
-                logger.debug(f"Delaying processing for user {request.user_id}")
-                await self._schedule_retry(request)
-                logger.debug('Msg after scheduled retry processed')
                 return True
 
-            async with (self.uow): # обеспечивает атомарность
-                logger.info(f"Entering UoW for user {request.user_id}")
-
-                # поаытаться найти матч
-                match: Match = await self.find_match_use_case.execute(request.user_id)
-                logger.info(f"Match result for user {request.user_id}: {match is not None}")
+            if await self._should_delay_processing(request):
+                await self._schedule_retry(request)
+                return True
+            
+            async with uow:
+                # Атомарно найти и зарезервировать матч
+                match: Match = await self.find_match_use_case.execute(request.user_id, uow.queue)
 
                 if match:
-                    # Сохраняет матч в репозиторий
-                    await self.uow.matches.add(match)
-
-                    # Сверяет версии БД и UoW, чтобы исключить параллелизм
+                    # Пользователи уже зарезервированы в Redis, просто сохраняем в БД
+                    await uow.matches.add(match)
+                    
                     try:
-                        current_version = await self.uow.matches.version()
-                        logger.info(f"Version check for user {request.user_id}: current={current_version}, expected version={self.uow.db_version}")
-                        if current_version == self.uow.db_version:
-                            # Версия не изменилась - можно коммитить
-                            await self.uow.commit()
-                            # Сохраняет изменения в репозиториях
-                            user_ids = [match.user1.user_id, match.user2.user_id]
-                            await self.uow.update(user_ids, UserStatus.MATCHED)
-                            logger.debug(f"Match committed for user {request.user_id}")
-                            return True  # Матч найден, обработка завершена
-                        else:
-                            # Пессемистичный сценарий параллелизма,
-                            # при котором никакие изменения в БД не записываются
-                            logger.warning(f"Version mismatch for user {request.user_id}:, current={current_version}, expected={self.uow.db_version} rolling back")
-                            await self.redis_repo.release_reservations([request.user_id])
+                        await uow.commit()
+                        user_ids = [match.user1.user_id, match.user2.user_id]
+                        logger.info(f"Match committed for users {user_ids}")
+                        return True
+                        
                     except Exception as e:
-                        # В случае ошибки при работе с версиями, откатываем транзакцию
-                        await self.redis_repo.release_reservations([request.user_id])
-                        logger.error(f"Version check error for user {request.user_id}: {e}")
-                        raise
+                        # Если коммит не удался, возвращаем пользователей в очередь
+                        logger.error(f"Commit failed, returning users to queue: {e}")
+                        user_ids = [match.user1.user_id, match.user2.user_id]
+                        
+                        for user_id in user_ids:
+                            user = await uow.queue.find_by_id(user_id)
+                            if user:
+                                await uow.queue.add_to_queue(user)
+                        
+                        await self._schedule_retry(request, delay=2.0)
+                        await self.metrics.record_error('commit_failed', request.user_id)
+                        return False
 
-            # Матч не найден, проверить лимиты и запланировать повтор
-            logger.debug(f"No match found for user {request.user_id}, handling no match")
-            return await self._handle_no_match(request)
+            # Матч не найден
+            return await self._handle_no_match(request, uow)
 
         except Exception as e:
             logger.error(f"Exception in ProcessMatchRequestUseCase for user {request.user_id}: {e}")
             await self.metrics.record_error('request_processing_error', request.user_id)
-            # В случае ошибки отправляем в dead letter queue
             await self.message_publisher.publish_to_dead_letter(
-                request.to_dict(), # noqa
+                request.to_dict(),
                 f"Processing error: {str(e)}"
             )
             return False
 
 
-    async def _should_process_request(self, request: MatchRequest):
+    async def _should_process_request(self, request: MatchRequest, uow: AbstractUnitOfWork):
         """ Определить, следует ли обрабатывать запрос """
-        logger.debug(f"Checking if should process request for user {request.user_id}")
-
+        
         # Проверить статус запроса
         if request.status in [config.SEARCH_CANCELED, config.SEARCH_COMPLETED]:
-            logger.debug(f"Request for user {request.user_id} is canceled or completed")
-            # Запрос отменен или завершен
-            await self._cleanup_user_state(request.user_id)
+            await self._cleanup_user_state(request.user_id, uow)
             return False
 
-        # В _should_process_request()
-        # Проверить, не зарезервирован ли сам пользователь
-        is_reserved = await self.redis_repo.redis.exists(f"reserved:{request.user_id}")
-        if is_reserved:
-            logger.debug(f"User {request.user_id} is reserved, waiting")
-            await asyncio.sleep(1)  # Короткая задержка
-            return False  # Повторить позже
+        # Проверить, не истек ли запрос
+        elapsed = datetime.now(tz=config.timezone) - request.created_at
+        if elapsed.total_seconds() >= config.matching.max_wait_time:
+            await self._handle_timeout(request.user_id, None, uow, elapsed.total_seconds())
+            return False
 
-        # Получить состояние пользователя
-        state = await self.state_repo.get_state(request.user_id)
-        logger.debug(f"State for user {request.user_id}: {state}")
-
-        if state:
-
-            logger.debug(
-                "user id: %s, their state: %s",
-                state.user_id, state.status
-            )
-
-            # Проверить, не истек ли запрос
-            if state.is_expired(config.matching.max_wait_time):
-                logger.debug(f"Request for user {request.user_id} has expired")
-                await self._handle_timeout(request.user_id, state)
-                return False
-
-            # Проверить, не обработан ли запрос
-            is_searching = await self.redis_repo.is_searching(request.user_id)
-            logger.debug(f"User {request.user_id} is_searching: {is_searching}, state.status: {state.status}")
-            if not is_searching and state.status == UserStatus.MATCHED:
-                logger.debug(f"Request for user {request.user_id} already processed")
-                return False
-
-        else:
-            logger.debug(f"Creating new state for user {request.user_id}")
-            new_state = UserState(
-                user_id=request.user_id,
-                status=UserStatus.WAITING,
-                created_at=time.time()
-            )
-            await self.state_repo.save_state(new_state)
+        # Проверить, находится ли пользователь в поиске (единственный источник истины - Redis)
+        is_searching = await uow.queue.is_searching(request.user_id)
+        
+        if not is_searching:
+            logger.info(f"User {request.user_id} not in search queue, skipping")
+            return False
 
         return True
 
 
     @staticmethod
     async def _should_delay_processing(request: MatchRequest):
-        """Определить, нужно ли отложить обработку"""
+        """ Определить, нужно ли отложить обработку """
         elapsed = datetime.now(tz=config.timezone) - request.created_at
         return elapsed.total_seconds() < config.matching.initial_delay  # 5 секунд
 
-    async def _schedule_retry(self, request, delay: float = None) -> None:
-        """Запланировать повторную обработку"""
+    async def _schedule_retry(self, request,  delay: float = None) -> None:
+        """ Запланировать повторную обработку """
         if delay is None:
             elapsed = datetime.now(tz=config.timezone) - request.created_at
             delay = max(0, config.matching.initial_delay - elapsed.total_seconds())
@@ -308,7 +234,7 @@ class ProcessMatchRequestUseCase:
 
         await self.message_publisher.publish_match_request(updated_request, delay)
 
-    async def _handle_no_match(self, request: MatchRequest):
+    async def _handle_no_match(self, request: MatchRequest,  uow: AbstractUnitOfWork):
         """ Обработать случаи, когда матч не найден"""
 
         # Проверить лимиты времени и попыток
@@ -316,15 +242,15 @@ class ProcessMatchRequestUseCase:
         if elapsed.total_seconds() >= config.matching.max_wait_time or \
                 request.retry_count >= config.matching.max_retries:
             # Превышены лимиты, уведомить о таймауте
-            await self._handle_timeout(request.user_id, None, elapsed.total_seconds())
+            await self._handle_timeout(request.user_id, None, uow, elapsed.total_seconds())
             return True
 
 
         # Применить ослабление критериев и запланировать повтор
-        await self._relax_criteria_and_retry(request)
+        await self._relax_criteria_and_retry(request,  uow)
         return True
 
-    async def _relax_criteria_and_retry(self, request: MatchRequest):
+    async def _relax_criteria_and_retry(self, request: MatchRequest,  uow: AbstractUnitOfWork):
         """ Ослабить критерии и запланировать повтор """
 
         # Ослабить критерии на основое количества повторов
@@ -348,7 +274,7 @@ class ProcessMatchRequestUseCase:
         )
 
         # Обновить критерии в репозитории
-        await self.find_match_use_case.user_repo.update_user_criteria(
+        await uow.queue.update_user_criteria(
             request.user_id,
             {
                 'language': relaxed_criteria.language,
@@ -371,10 +297,11 @@ class ProcessMatchRequestUseCase:
             self,
             user_id: int,
             state: Optional[UserState],
+            uow: AbstractUnitOfWork,
             wait_time: float = None
     ) -> None:
 
-        """Обработать таймаут поиска"""
+        """ Обработать таймаут поиска """
         if wait_time is None and state:
             wait_time = time.time() - state.created_at
 
@@ -384,14 +311,14 @@ class ProcessMatchRequestUseCase:
         await self.metrics.record_user_status_change(UserStatus.WAITING, UserStatus.EXPIRED)
         logger.debug("Time wait for message % s expired", user_id)
         # Очистить состояние
-        await self._cleanup_user_state(user_id)
+        await self._cleanup_user_state(user_id, uow)
 
 
-    async def _cleanup_user_state(self, user_id: int):
-        """Очистить состояние пользователя"""
+    async def _cleanup_user_state(self, user_id: int, uow):
+        """ Очистить состояние пользователя """
         try:
-            await self.state_repo.delete_state(user_id)
-            await self.find_match_use_case.user_repo.remove_from_queue(user_id)
+            await uow.states.delete_state(user_id)
+            await uow.queue.remove_from_queue(user_id)
 
         except Exception as e:
             logger.error(f"Error while cleaning up user state: {e}")

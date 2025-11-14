@@ -24,6 +24,11 @@ class AbstractUserRepository(ABC):
     async def find_compatible_users(self, user: "User", limit: int = 50) -> List["User"]:
         """Найти совместимых пользователей"""
         pass
+    
+    @abstractmethod
+    async def find_and_reserve_match(self, user: "User") -> Optional["User"]:
+        """Атомарно найти и зарезервировать совместимого пользователя"""
+        pass
 
     @abstractmethod
     async def add_to_queue(self, user: "User") -> None:
@@ -47,15 +52,6 @@ class AbstractUserRepository(ABC):
     @abstractmethod
     async def update_user_criteria(self, user_id: int, criteria: Dict[str, Any]) -> None:
         """Обновить критерии пользователя"""
-        pass
-
-    @abstractmethod
-    async def release_reservations(self, user_ids: List[int]) -> None:
-        """Освободить резервации пользователей"""
-        pass
-
-    def transaction(self):
-        """Контекстный менеджер для транзакций"""
         pass
 
 
@@ -187,9 +183,6 @@ class AbstractUnitOfWork(ABC):
     async def __aexit__(self):
         await self._rollback()
 
-    async def update(self, user_ids: List[int], new_state: "UserStatus"):
-        await self._update(user_ids, new_state)
-
     async def commit(self):
         self.db_version += 1
         await self._commit()
@@ -200,8 +193,4 @@ class AbstractUnitOfWork(ABC):
 
     @abstractmethod
     async def _commit(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def _update(self, user_ids, new_state):
         raise NotImplementedError

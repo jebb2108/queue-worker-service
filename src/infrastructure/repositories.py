@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Union
 
-import asyncpg
 import redis
 from sqlalchemy import select
 
@@ -90,76 +89,91 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         finally:
             logger.debug("Created new User entity ")
 
-    async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
-        """ Найти совместимых пользователей с использованием Lua скрипта """
-        logger.debug(f"Finding compatible users for user {user.user_id}")
+    async def find_and_reserve_match(self, user: User) -> Optional[User]:
+        """Атомарно найти и зарезервировать совместимого пользователя"""
+        logger.debug(f"Finding and reserving match for user {user.user_id}")
 
-        # Lua скрипт для эффективного поиска и резервации совместимых пользователей
+        # Lua скрипт для атомарного поиска и резервации
         lua_script = """
         local queue_key = KEYS[1]
         local user_id = ARGV[1]
         local user_language = ARGV[2]
         local user_fluency = tonumber(ARGV[3])
-        local max_candidates = tonumber(ARGV[4])
-        local reservation_ttl = 5
 
+        -- Проверяем, что пользователь еще в очереди
+        local user_in_queue = false
         local queue_members = redis.call('LRANGE', queue_key, 0, -1)
-        local candidates = {}
-        local count = 0
-
+        
         for i, member_id in ipairs(queue_members) do
-            if member_id ~= user_id and count < max_candidates then
-                -- Проверить, не зарезервирован ли уже
-                local reservation_key = 'reserved:' .. member_id
-                if redis.call('EXISTS', reservation_key) == 0 then
-                    local criteria_key = 'criteria:' .. member_id
-                    local candidate_criteria = redis.call('HGETALL', criteria_key)
+            if member_id == user_id then
+                user_in_queue = true
+                break
+            end
+        end
+        
+        if not user_in_queue then
+            return nil
+        end
 
-                    if #candidate_criteria > 0 then
-                        local criteria = {}
-                        for j = 1, #candidate_criteria, 2 do
-                            criteria[candidate_criteria[j]] = candidate_criteria[j + 1]
-                        end
+        -- Ищем первого совместимого кандидата
+        for i, member_id in ipairs(queue_members) do
+            if member_id ~= user_id then
+                local criteria_key = 'criteria:' .. member_id
+                local candidate_criteria = redis.call('HGETALL', criteria_key)
 
-                        -- Предварительная фильтрация
-                        if criteria['language'] == user_language then
-                            local fluency_diff = math.abs(tonumber(criteria['fluency'] or 0) - user_fluency)
-                            if fluency_diff <= 2 then
-                                -- Зарезервировать кандидата
-                                redis.call('SET', reservation_key, user_id, 'EX', reservation_ttl)
-                                table.insert(candidates, member_id)
-                                count = count + 1
-                            end
+                if #candidate_criteria > 0 then
+                    local criteria = {}
+                    for j = 1, #candidate_criteria, 2 do
+                        criteria[candidate_criteria[j]] = candidate_criteria[j + 1]
+                    end
+
+                    -- Проверка совместимости
+                    if criteria['language'] == user_language then
+                        local fluency_diff = math.abs(tonumber(criteria['fluency'] or 0) - user_fluency)
+                        if fluency_diff <= 2 then
+                            -- Нашли кандидата! Атомарно удаляем обоих из очереди
+                            redis.call('LREM', queue_key, 1, user_id)
+                            redis.call('LREM', queue_key, 1, member_id)
+                            redis.call('DEL', 'searching:' .. user_id)
+                            redis.call('DEL', 'searching:' .. member_id)
+                            
+                            return member_id
                         end
                     end
                 end
             end
         end
 
-        return candidates
+        return nil
         """
 
-        candidate_ids = await self.redis.eval(
+        candidate_id = await self.redis.eval(
             lua_script, 1, "waiting_queue",
-            str(user.user_id), user.criteria.language, str(user.criteria.fluency), str(limit)
+            str(user.user_id), user.criteria.language, str(user.criteria.fluency)
         )
 
-        logger.debug(
-            "All candidates ids from Lua script for user %s: %s", user.user_id, ", ".join(candidate_ids) if candidate_ids else 'nobody'
-        )
+        if not candidate_id:
+            logger.debug(f"No match found and reserved for user {user.user_id}")
+            return None
 
-        # Получить полные данные кандидатов
-        compatible_users: list = []
-        for candidate_id in candidate_ids:
-            candidate = await self.find_by_id(int(candidate_id))
-            if candidate and user.is_compatible_with(candidate):
-                compatible_users.append(candidate)
+        # Получить полные данные кандидата
+        candidate = await self.find_by_id(int(candidate_id))
         
-        # Логирование подходящих пользователей из очереди ожидания
-        f_users = [ str(u.user_id) if u else u for u in compatible_users ]
-        logger.debug("Compatible candidates for user %s: %s", user.user_id, ", ".join(f_users) if f_users else 'nobody')
-
-        return compatible_users
+        if candidate and user.is_compatible_with(candidate):
+            logger.info(f"Match found and reserved: {user.user_id} <-> {candidate.user_id}")
+            return candidate
+        
+        # Если кандидат не подходит, возвращаем обоих в очередь
+        await self.add_to_queue(user)
+        if candidate:
+            await self.add_to_queue(candidate)
+        
+        return None
+    
+    async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
+        """ Найти совместимых пользователей БЕЗ резервации (для обратной совместимости) """
+        # Этот метод больше не используется в основной логике
+        return []
 
     async def add_to_queue(self, user: User) -> None:
         """ Добавить пользователя в очередь поиска """
@@ -205,15 +219,6 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         await self.redis.expire(f"criteria:{user_id}", config.cache_ttl)
         logger.debug("Criteria updated: %s", criteria_data)
 
-    async def release_reservations(self, user_ids: List[int]) -> None:
-        """Освободить резервации пользователей"""
-        if not user_ids:
-            return
-        
-        keys = [f"reserved:{user_id}" for user_id in user_ids]
-        if keys:
-            await self.redis.delete(*keys)
-            logger.debug("Released reservations for users: %s", user_ids)
 
     @asynccontextmanager
     async def transaction(self):
@@ -352,18 +357,18 @@ class MemoryStateRepository(AbstractStateRepository, ABC):
 
 class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
 
-    def __init__(self):
+    def __init__(self, session):
         super().__init__()
+        self._session = session
 
     async def add(self, match: Match) -> None:
         self._session.add(match)
         logger.debug(f"Match {match.match_id} added to session")
 
-
     async def get(self, match_id: str):
-        stmt = select(Match).where(Match.match_id == match_id) # noqa
+        stmt = select(Match).where(Match.match_id == match_id)  # noqa
         result = await self._session.execute(stmt)
-        return result.scalar_one_or_none
+        return result.scalar_one_or_none()
 
     async def list(self) -> List[str]:
         """Получить список всех match_id из таблицы match_sessions"""

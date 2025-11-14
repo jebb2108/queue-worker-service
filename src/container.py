@@ -156,11 +156,10 @@ class ServiceContainer:
 
         # Repositories
         self.register_singleton(AbstractUserRepository, RedisUserRepository)
-        self.register_singleton(AbstractMatchRepository, SQLAlchemyMatchRepository)
+        self.register_transient(AbstractMatchRepository, SQLAlchemyMatchRepository)
         self.register_singleton(AbstractStateRepository, MemoryStateRepository)
 
         # Infrastructure services
-        self.register_singleton(AbstractUnitOfWork, SQLAlchemyUnitOfWork)
         self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)
         self.register_singleton(AbstractMetricsCollector, PrometheusMetricsCollector)
 
@@ -169,8 +168,12 @@ class ServiceContainer:
         self.register_singleton(RateLimiter, RateLimiter)
 
         # Use cases
-        self.register_transient(FindMatchUseCase, FindMatchUseCase)
-        self.register_transient(ProcessMatchRequestUseCase, ProcessMatchRequestUseCase)
+        self.register_transient(FindMatchUseCase)
+        self.register_transient(ProcessMatchRequestUseCase)
+
+        # UoW
+        self.register_transient(SQLAlchemyUnitOfWork, SQLAlchemyUnitOfWork)
+        self.register_transient(AbstractUnitOfWork, SQLAlchemyUnitOfWork)
 
 
     async def cleanup(self):
@@ -238,12 +241,6 @@ async def get_user_repository() -> AbstractUserRepository:
     """ Получить репозиторий пользователя """
     container = await get_container()
     return await container.get(AbstractUserRepository)
-
-
-async def get_match_repository() -> AbstractMatchRepository:
-    """ Получить репозиторий матча """
-    container = await get_container()
-    return await container.get(AbstractMatchRepository)
 
 
 async def get_state_repository() -> AbstractStateRepository:

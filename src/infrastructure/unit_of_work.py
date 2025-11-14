@@ -1,80 +1,71 @@
 import asyncio
+import time
 from abc import ABC
 from typing import List
 
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
-from src.application.interfaces import AbstractUnitOfWork, AbstractUserRepository, AbstractMatchRepository, \
+from src.application.interfaces import (
+    AbstractUnitOfWork, AbstractUserRepository,
     AbstractStateRepository
+)
 from src.domain.value_objects import UserStatus
+from src.logconfig import opt_logger as log
+from src.infrastructure.repositories import SQLAlchemyMatchRepository
+
+logger = log.setup_logger('uow')
+
+# Configuration for UoW timeout (in seconds)
+UOW_TIMEOUT = 30
 
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
     """ Unit Of Work класс для атомарных операуий с sqlalchemy """
 
-    def __init__(self):
+    def __init__(
+            self,
+            session_factory: async_sessionmaker,
+            user_repository: AbstractUserRepository,
+            state_repository: AbstractStateRepository
+    ):
         super().__init__()
-        self._initialized = False
-        self._session_lock = asyncio.Lock()
-
-    async def initialize(self):
-        """ Инициализирует необходимые ресурсы """
-        from src.container import get_container
-        # Вызывает контейнер
-        container = await get_container()
-        # Вызывает различные репозитории
-        self.queue = await container.get(AbstractUserRepository)
-        self.matches = await container.get(AbstractMatchRepository)
-        self.states = await container.get(AbstractStateRepository)
-        self.session_factory = await container.get(async_sessionmaker)
-        # Помечает UoW инициированным
-        self._initialized = True
+        self.session_factory = session_factory
+        self.queue = user_repository
+        self.states = state_repository
+        self.committed = False
+        self.session = None
+        logger.debug(f"UoW instance created: {id(self)}")
 
     async def __aenter__(self):
-        # Вызываю различные зависимости
-        if not self._initialized: await self.initialize()
-        # Синхронизируем доступ к сессии
-        async with self._session_lock:
-            # Получаю фабрику сессии из контейнера (уже настроенную)
-            self.session = self.session_factory()
-            # Передаю сессию репозиторию, ответсвенному за БД
-            await self.matches.pass_session(self.session)
-        # Наследую родительский класс
+        self.session = self.session_factory()
+        self.matches = SQLAlchemyMatchRepository(self.session)
+        self.committed = False
         return await super().__aenter__()
 
     async def __aexit__(self, *args):
         try:
-            # Сначала пытается выполнить
-            # rollback из родительского класса
             await super().__aexit__()
+            
+            # Всегда откатываем, если не было явного коммита
+            if not self.committed and self.session and self.session.is_active:
+                logger.debug(f"UoW {id(self)} - Rolling back uncommitted transaction")
+                await self.session.rollback()
 
-        except Exception: # noqa
-            # Если было исключение, явно rollback
-            async with self._session_lock:
-                if self.session and self.session.is_active:
-                    await self.session.rollback()
+        except Exception as e:
+            logger.error(f"UoW {id(self)} - Exception in __aexit__: {e}")
+            if self.session and self.session.is_active:
+                await self.session.rollback()
+            raise
 
         finally:
-            # Закрытие сессии при любом исходе
-            async with self._session_lock:
-                if self.session and self.session.is_active:
-                    await self.session.close()
-
-
-    async def _update(self, user_ids: List[int], new_state: UserStatus):
-        """ Обновление состояний в оперативной памяти """
-        while user_ids:
-            uid = user_ids.pop()
-            await self.states.update_state(uid, new_state)
-            await self.queue.remove_from_queue(uid)
-
+            if self.session:
+                await self.session.close()
+                self.session = None
 
     async def _rollback(self):
-        async with self._session_lock:
-            await self.session.rollback()
-
+        await self.session.rollback()
 
     async def _commit(self):
-        async with self._session_lock:
-            await self.session.commit()
+        await self.session.commit()
+        self.committed = True
 

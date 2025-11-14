@@ -3,12 +3,13 @@ from typing import Dict, Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
-from src.logconfig import opt_logger as log
-from src.application.interfaces import AbstractMetricsCollector
+from src.application.interfaces import AbstractMetricsCollector, AbstractUnitOfWork
 from src.application.use_cases import ProcessMatchRequestUseCase
+from src.container import get_container
 from src.domain.exceptions import DomainException
 from src.domain.value_objects import MatchRequest
 from src.infrastructure.services import RateLimiter, CurcuitBreaker
+from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='match_handler')
 
@@ -78,10 +79,12 @@ class MatchRequestHandler:
             await msg.nack()
 
     async def _process_request_safely(self, match_request: MatchRequest):
-        """Безопасная обработка запроса с обработкой исключений"""
+        """ Безопасная обработка запроса с обработкой исключений """
         try:
+            container = await get_container()
+            unit_of_work = await container.get(AbstractUnitOfWork)
             logger.debug(f"Starting to process match request for user {match_request.user_id}")
-            result = await self.process_match_use_case.execute(match_request)
+            result = await self.process_match_use_case.execute(match_request, unit_of_work) # noqa
             logger.debug(f"Successfully processed match request for user {match_request.user_id}, result: {result}")
             return result
 
