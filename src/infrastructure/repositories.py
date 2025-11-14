@@ -92,6 +92,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
     async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
         """ Найти совместимых пользователей с использованием Lua скрипта """
+        logger.debug(f"Finding compatible users for user {user.user_id}")
 
         # Lua скрипт для эффективного поиска и резервации совместимых пользователей
         lua_script = """
@@ -144,7 +145,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         )
 
         logger.debug(
-            "All candidates ids: %s", ", ".join(candidate_ids) if candidate_ids else 'nobody'
+            "All candidates ids from Lua script for user %s: %s", user.user_id, ", ".join(candidate_ids) if candidate_ids else 'nobody'
         )
 
         # Получить полные данные кандидатов
@@ -156,7 +157,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         
         # Логирование подходящих пользователей из очереди ожидания
         f_users = [ str(u.user_id) if u else u for u in compatible_users ]
-        logger.debug("Compatible candidates: %s", ", ".join(f_users) if f_users else 'nobody')
+        logger.debug("Compatible candidates for user %s: %s", user.user_id, ", ".join(f_users) if f_users else 'nobody')
 
         return compatible_users
 
@@ -355,17 +356,31 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         super().__init__()
 
     async def add(self, match: Match) -> None:
-        self._session.add(match)
+        await self._session.add(match)
+        logger.debug(f"Match {match.match_id} added to session")
+
 
     async def get(self, match_id: str):
         stmt = select(Match).where(Match.match_id == match_id) # noqa
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none
 
-    async def version(self):
-        stmt = select(Match.id).order_by(orm_match.c.id.desc()).limit(1) # noqa
+    async def list(self) -> List[str]:
+        """Получить список всех match_id из таблицы match_sessions"""
+        stmt = select(orm_match.c.match_id) # noqa
         result = await self._session.execute(stmt)
-        return result.one()[0]
+        match_ids = result.scalars().all()
+        logger.debug(f"Found {len(match_ids)} match_ids: {match_ids}")
+        return list(match_ids)
+
+
+    async def version(self):
+        from sqlalchemy import func
+        stmt = select(func.count(orm_match.c.match_id)) # noqa
+        result = await self._session.execute(stmt)
+        version = result.scalar_one()
+        logger.debug(f"Resulted version for match: {version}")
+        return version
 
 
 class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):

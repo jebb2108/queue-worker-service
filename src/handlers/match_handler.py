@@ -80,11 +80,14 @@ class MatchRequestHandler:
     async def _process_request_safely(self, match_request: MatchRequest):
         """Безопасная обработка запроса с обработкой исключений"""
         try:
-            return await self.process_match_use_case.execute(match_request)
+            logger.debug(f"Starting to process match request for user {match_request.user_id}")
+            result = await self.process_match_use_case.execute(match_request)
+            logger.debug(f"Successfully processed match request for user {match_request.user_id}, result: {result}")
+            return result
 
-        except DomainException:
+        except DomainException as e:
             # Доменные исключения - логируем как предупреждения
-            logger.warning(f"Domain error processing request for user {match_request.user_id}")
+            logger.warning(f"Domain error processing request for user {match_request.user_id}: {e}")
             await self.metrics.record_error('domain_error', match_request.user_id)
             return False
 

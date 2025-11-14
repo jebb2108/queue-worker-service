@@ -58,19 +58,9 @@ async def create_tables():
     container = await get_container()
     engine = await container.get(sqlalchemy.Engine)
     async with engine.begin() as conn:
+        await conn.run_sync(metadata.drop_all)
         await conn.run_sync(metadata.create_all)
     logger.debug("Database tables created successfully")
-
-
-async def drop_tables():
-    """ Удаляет таблицы из базы данных """
-    from src.container import get_container
-    container = await get_container()
-    engine = await container.get(AsyncEngine)
-    async with engine.begin() as conn:
-        await conn.run_sync(metadata.drop_all)
-    logger.debug("Database tables dropped successfully")
-
 
 
 # Флаг для отслеживания инициализации мапперов
@@ -97,5 +87,4 @@ async def start_mappers():
 
     _mappers_initialized = True
 
-    
     await create_tables()

@@ -34,20 +34,26 @@ class FindMatchUseCase:
         """Выполнить поиск матча для пользователя"""
         start_time = time.time()
         try:
+            logger.debug(f"Starting match search for user {user_id}")
             # Получить пользователя
             user = await self.user_repo.find_by_id(user_id)
             if not user:
+                logger.error(f"User {user_id} not found in repository")
                 raise UserNotFoundException(f"User {user_id} not found")
 
+            logger.debug(f"User {user_id} found, searching for compatible users")
             # Найти совместимых кандидатов
             candidates = await self.user_repo.find_compatible_users(user)
             candidates_evaluated = len(candidates)
+            logger.debug(f"Found {candidates_evaluated} compatible candidates for user {user_id}")
 
             # Записать размер очереди
             queue_size = await self.user_repo.get_queue_size()
             await self.metrics.record_queue_size(queue_size)
+            logger.debug(f"Queue size: {queue_size}")
 
             if not candidates:
+                logger.debug(f"No candidates found for user {user_id}")
                 await self.metrics.record_match_attempt(
                     user_id, time.time() - start_time, candidates_evaluated, False
                 )
@@ -55,6 +61,7 @@ class FindMatchUseCase:
 
             # Выбрать лучшего кандидата
             best_candidate = await self._select_best_candidate(user, candidates)
+            logger.debug(f"Best candidate for user {user_id}: {best_candidate.candidate.user_id if best_candidate else None}")
 
             if not best_candidate:
                 await self.user_repo.release_reservations([c.user_id for c in candidates])
@@ -70,6 +77,7 @@ class FindMatchUseCase:
             match = Match.create(
                 user, best_candidate.candidate, best_candidate.score.total_score
             )
+            logger.debug(f"Match created for users {user_id} and {best_candidate.candidate.user_id}")
 
             # Записать метрики
             await self.metrics.record_match_attempt(
@@ -88,6 +96,7 @@ class FindMatchUseCase:
             return match
 
         except Exception as e:
+            logger.error(f"Exception in FindMatchUseCase for user {user_id}: {e}")
             await self.metrics.record_error('match_search_error', user_id)
             raise MatchingException(f"Error finding match for user {user_id}: {str(e)}")
 
@@ -149,45 +158,62 @@ class ProcessMatchRequestUseCase:
     async def execute(self, request: MatchRequest):
         """ Обработать запрос на матчинг """
         try:
+            logger.debug(f"Processing match request for user {request.user_id}")
 
             #  Проверить состояние пользователя
             should_process = await self._should_process_request(request)
+            logger.debug(f"Should process request for user {request.user_id}: {should_process}")
 
             if not should_process:
                 logger.debug("Request either proccessed or rejected")
                 return True # Запрос обработан (отклонен или отложен)
 
             if await self._should_delay_processing(request):
+                logger.debug(f"Delaying processing for user {request.user_id}")
                 await self._schedule_retry(request)
                 logger.debug('Msg after scheduled retry processed')
                 return True
 
-            async with self.uow: # обеспечивает атомарность
+            async with (self.uow): # обеспечивает атомарность
+                logger.info(f"Entering UoW for user {request.user_id}")
 
                 # поаытаться найти матч
                 match: Match = await self.find_match_use_case.execute(request.user_id)
+                logger.info(f"Match result for user {request.user_id}: {match is not None}")
 
                 if match:
                     # Сохраняет матч в репозиторий
+                    res = await self.uow.matches.list()
+                    logger.debug(f"All matches rn: {res}")
                     await self.uow.matches.add(match)
                     # Сверяет версии БД и UoW, чтобы исключить параллелизм
-                    if await self.uow.matches.version() == self.uow.db_version + 1:
-                        # Производит фианльный комит в БД
-                        await self.uow.commit()
-                        # Сохраняет изменения в репозиториях
-                        user_ids = [match.user1.user_id, match.user2.user_id] if match else []
-                        await self.uow.update(user_ids, UserStatus.MATCHED)
-                        return True  # Матч найден, обработка завершена
-
-                    else:
-                        # Пессемистичный сценарий параллелизма,
-                        # при котором никакие изменения в БД не записываются
-                        self.uow.db_version = await self.uow.matches.version()
+                    try:
+                        current_version = await self.uow.matches.version()
+                        logger.info(f"Version check for user {request.user_id}: current={current_version}, expected={self.uow.db_version + 1}")
+                        if current_version == self.uow.db_version + 1:
+                            # Производит фианльный комит в БД
+                            await self.uow.commit()
+                            # Сохраняет изменения в репозиториях
+                            user_ids = [match.user1.user_id, match.user2.user_id]
+                            await self.uow.update(user_ids, UserStatus.MATCHED)
+                            logger.debug(f"Match committed for user {request.user_id}")
+                            return True  # Матч найден, обработка завершена
+                        else:
+                            # Пессемистичный сценарий параллелизма,
+                            # при котором никакие изменения в БД не записываются
+                            self.uow.db_version = current_version
+                            logger.warning(f"Version mismatch for user {request.user_id}, rolling back")
+                    except Exception as e:
+                        # В случае ошибки при работе с версиями, откатываем транзакцию
+                        logger.error(f"Version check error for user {request.user_id}: {e}")
+                        raise
 
             # Матч не найден, проверить лимиты и запланировать повтор
+            logger.debug(f"No match found for user {request.user_id}, handling no match")
             return await self._handle_no_match(request)
 
         except Exception as e:
+            logger.error(f"Exception in ProcessMatchRequestUseCase for user {request.user_id}: {e}")
             await self.metrics.record_error('request_processing_error', request.user_id)
             # В случае ошибки отправляем в dead letter queue
             await self.message_publisher.publish_to_dead_letter(
@@ -199,15 +225,18 @@ class ProcessMatchRequestUseCase:
 
     async def _should_process_request(self, request: MatchRequest):
         """ Определить, следует ли обрабатывать запрос """
+        logger.debug(f"Checking if should process request for user {request.user_id}")
 
         # Проверить статус запроса
         if request.status in [config.SEARCH_CANCELED, config.SEARCH_COMPLETED]:
+            logger.debug(f"Request for user {request.user_id} is canceled or completed")
             # Запрос отменен или завершен
             await self._cleanup_user_state(request.user_id)
             return False
 
         # Получить состояние пользователя
         state = await self.state_repo.get_state(request.user_id)
+        logger.debug(f"State for user {request.user_id}: {state}")
 
         if state:
 
@@ -218,15 +247,19 @@ class ProcessMatchRequestUseCase:
 
             # Проверить, не истек ли запрос
             if state.is_expired(config.matching.max_wait_time):
+                logger.debug(f"Request for user {request.user_id} has expired")
                 await self._handle_timeout(request.user_id, state)
                 return False
 
             # Проверить, не обработан ли запрос
-            if not await self.redis_repo.is_searching(request.user_id) and \
-                    state.status == UserStatus.MATCHED:
+            is_searching = await self.redis_repo.is_searching(request.user_id)
+            logger.debug(f"User {request.user_id} is_searching: {is_searching}, state.status: {state.status}")
+            if not is_searching and state.status == UserStatus.MATCHED:
+                logger.debug(f"Request for user {request.user_id} already processed")
                 return False
 
         else:
+            logger.debug(f"Creating new state for user {request.user_id}")
             new_state = UserState(
                 user_id=request.user_id,
                 status=UserStatus.WAITING,
@@ -315,7 +348,6 @@ class ProcessMatchRequestUseCase:
             }
         )
 
-        logger.debug("User %s criteria relaxed", request.user_id)
         # Запланировать повтор с задержкой
         delay = min(30.0, 2.0 * (updated_request.retry_count + 1)) # Линейная задержка
         await self.message_publisher.publish_match_request(updated_request, delay)

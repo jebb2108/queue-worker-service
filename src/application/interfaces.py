@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
@@ -64,8 +65,7 @@ class AbstractMatchRepository(ABC):
         self._session = None
 
     async def pass_session(self, session):
-        if self._session is None:
-            self._session = session
+        self._session = session
 
     @abstractmethod
     def add(self, macth: "Match"):
@@ -73,6 +73,11 @@ class AbstractMatchRepository(ABC):
 
     @abstractmethod
     def get(self, session_id: str):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list(self) -> List[str]:
+        """Получить список всех match_id из таблицы match_sessions"""
         raise NotImplementedError
 
 

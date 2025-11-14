@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC
 from typing import List
 
@@ -14,6 +15,7 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
     def __init__(self):
         super().__init__()
         self._initialized = False
+        self._session_lock = asyncio.Lock()
 
     async def initialize(self):
         """ Инициализирует необходимые ресурсы """
@@ -31,12 +33,12 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
     async def __aenter__(self):
         # Вызываю различные зависимости
         if not self._initialized: await self.initialize()
-        # Получаю фабрику сессии из контейнера (уже настроенную)
-        self.session = self.session_factory()
-        # Начать транзакцию для сессии к БД
-        self._transaction = await self.session.begin()
-        # Передаю сессию репозиторию, ответсвенному за БД
-        await self.matches.pass_session(self._transaction)
+        # Синхронизируем доступ к сессии
+        async with self._session_lock:
+            # Получаю фабрику сессии из контейнера (уже настроенную)
+            self.session = self.session_factory()
+            # Передаю сессию репозиторию, ответсвенному за БД
+            await self.matches.pass_session(self.session)
         # Наследую родительский класс
         return await super().__aenter__()
 
@@ -46,14 +48,17 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
             # rollback из родительского класса
             await super().__aexit__()
 
-        except Exception:
+        except Exception: # noqa
             # Если было исключение, явно rollback
-            await self._transaction.rollback()
-            raise
+            async with self._session_lock:
+                if self.session and self.session.is_active:
+                    await self.session.rollback()
 
         finally:
             # Закрытие сессии при любом исходе
-            await self.session.close()
+            async with self._session_lock:
+                if self.session and self.session.is_active:
+                    await self.session.close()
 
 
     async def _update(self, user_ids: List[int], new_state: UserStatus):
@@ -65,9 +70,11 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
 
 
     async def _rollback(self):
-        await self._transaction.rollback()
+        async with self._session_lock:
+            await self.session.rollback()
 
 
     async def _commit(self):
-        await self._transaction.commit()
+        async with self._session_lock:
+            await self.session.commit()
 
