@@ -29,7 +29,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
     def __init__(self, r_client: redis.Redis):
         self.redis = r_client
-
+        
     async def save(self, user: User) -> None:
         """Сохранить пользователя в Redis"""
         user_data = {
@@ -88,6 +88,115 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
         finally:
             logger.debug("Created new User entity ")
+
+    async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
+        """Найти совместимых пользователей из очереди"""
+        logger.debug(f"Finding compatible users for user {user.user_id}, limit={limit}")
+
+        # Lua скрипт для получения списка потенциальных кандидатов
+        lua_script = """
+        local queue_key = KEYS[1]
+        local user_id = ARGV[1]
+        local user_language = ARGV[2]
+        local limit = tonumber(ARGV[3])
+        
+        local candidates = {}
+        local queue_members = redis.call('LRANGE', queue_key, 0, -1)
+        
+        -- Собираем кандидатов с базовой проверкой
+        for i, member_id in ipairs(queue_members) do
+            if member_id ~= user_id and #candidates < limit then
+                local criteria_key = 'criteria:' .. member_id
+                local candidate_criteria = redis.call('HGETALL', criteria_key)
+                
+                if #candidate_criteria > 0 then
+                    local criteria = {}
+                    for j = 1, #candidate_criteria, 2 do
+                        criteria[candidate_criteria[j]] = candidate_criteria[j + 1]
+                    end
+                    
+                    -- Базовая проверка: тот же язык
+                    if criteria['language'] == user_language then
+                        table.insert(candidates, member_id)
+                    end
+                end
+            end
+        end
+        
+        return candidates
+        """
+
+        try:
+            # Получить ID кандидатов из Redis
+            candidate_ids = await self.redis.eval(
+                lua_script, 1, "waiting_queue",
+                str(user.user_id), user.criteria.language, str(limit)
+            )
+
+            if not candidate_ids:
+                logger.debug(f"No compatible candidates found for user {user.user_id}")
+                return []
+
+            # Загрузить полные данные кандидатов
+            candidates = []
+            for candidate_id in candidate_ids:
+                candidate = await self.find_by_id(int(candidate_id))
+                if candidate and user.is_compatible_with(candidate):
+                    candidates.append(candidate)
+
+            logger.debug(f"Found {len(candidates)} compatible candidates for user {user.user_id}")
+            return candidates
+
+        except Exception as e:
+            logger.error(f"Error finding compatible users: {e}")
+            return []
+
+    async def reserve_candidate(self, user_id: int, candidate_id: int) -> bool:
+        """Атомарно зарезервировать пару пользователей"""
+        reserve_script = """
+        local queue_key = KEYS[1]
+        local user_id = ARGV[1]
+        local candidate_id = ARGV[2]
+
+        -- Проверяем, что оба еще в очереди
+        local user_in_queue = false
+        local candidate_in_queue = false
+        local queue_members = redis.call('LRANGE', queue_key, 0, -1)
+
+        for i, member_id in ipairs(queue_members) do
+            if member_id == user_id then user_in_queue = true end
+            if member_id == candidate_id then candidate_in_queue = true end
+        end
+
+        if not user_in_queue or not candidate_in_queue then
+            return 0
+        end
+
+        -- Атомарно удаляем обоих
+        redis.call('LREM', queue_key, 1, user_id)
+        redis.call('LREM', queue_key, 1, candidate_id)
+        redis.call('DEL', 'searching:' .. user_id)
+        redis.call('DEL', 'searching:' .. candidate_id)
+
+        return 1
+        """
+
+        try:
+            reserved = await self.redis.eval(
+                reserve_script, 1, "waiting_queue",
+                str(user_id), str(candidate_id)
+            )
+
+            if reserved:
+                logger.debug(f"Successfully reserved match: {user_id} <-> {candidate_id}")
+                return True
+            else:
+                logger.debug(f"Failed to reserve match {user_id} <-> {candidate_id} (already taken)")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error reserving candidate: {e}")
+            return False
 
     async def find_and_reserve_match(self, user: User) -> Optional[User]:
         """Атомарно найти и зарезервировать совместимого пользователя"""
@@ -181,29 +290,24 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
         # Получить полные данные кандидата и проверить полную совместимость
         candidate = await self.find_by_id(int(candidate_id))
-        
+
         if not candidate or not user.is_compatible_with(candidate):
             logger.debug(f"Candidate {candidate_id} not fully compatible with user {user.user_id}")
             return None
-        
+
         # Кандидат подходит! Атомарно резервируем обоих
-        
+
         reserved = await self.redis.eval(
             reserve_script, 1, "waiting_queue",
             str(user.user_id), str(candidate.user_id)
         )
-        
+
         if reserved:
-            logger.info(f"Match found and reserved: {user.user_id} <-> {candidate.user_id}")
+            logger.debug(f"Match found and reserved: {user.user_id} <-> {candidate.user_id}")
             return candidate
         else:
             logger.debug(f"Failed to reserve match {user.user_id} <-> {candidate.user_id} (already taken)")
             return None
-    
-    async def find_compatible_users(self, user: User, limit: int = 50) -> List[User]:
-        """ Найти совместимых пользователей БЕЗ резервации (для обратной совместимости) """
-        # Этот метод больше не используется в основной логике
-        return []
 
     async def add_to_queue(self, user: User) -> None:
         """ Добавить пользователя в очередь поиска """
@@ -211,7 +315,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         # Проверка на существующего пользователя в очереди
         if await self.is_searching(user_id=user.user_id):
             raise UserAlreadyInSearch
-        
+
         await self.save(user)  # Сохранить данные пользователя
         await self.redis.lpush("waiting_queue", user.user_id)
         await self.redis.setex(f"searching:{user.user_id}", config.matching.max_wait_time, 1)
@@ -248,7 +352,6 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         await self.redis.hset(f"criteria:{user_id}", mapping=criteria_data)
         await self.redis.expire(f"criteria:{user_id}", config.cache_ttl)
         logger.debug("Criteria updated: %s", criteria_data)
-
 
     @asynccontextmanager
     async def transaction(self):

@@ -7,36 +7,39 @@ if TYPE_CHECKING:
 
 
 class AbstractUserRepository(ABC):
-    """Интерфейс репозитория пользователей"""
+    """ Интерфейс репозитория пользователей """
 
-    @abstractmethod
-    async def save(self, user: "User") -> None:
-        """Сохранить пользователя"""
+    async def reserve_candidate(self, user_id: int, candidate: int) -> None:
+        """ Зарезервировать лучшего кандидата """
         pass
 
-    @abstractmethod
-    async def find_by_id(self, user_id: int) -> Optional["User"]:
-        """Найти пользователя по ID"""
-        pass
-
-    @abstractmethod
-    async def find_compatible_users(self, user: "User", limit: int = 50) -> List["User"]:
-        """Найти совместимых пользователей"""
-        pass
-    
-    @abstractmethod
     async def find_and_reserve_match(self, user: "User") -> Optional["User"]:
         """Атомарно найти и зарезервировать совместимого пользователя"""
         pass
 
     @abstractmethod
+    async def save(self, user: "User") -> None:
+        """ Сохранить пользователя """
+        pass
+
+    @abstractmethod
+    async def find_by_id(self, user_id: int) -> Optional["User"]:
+        """ Найти пользователя по ID """
+        pass
+
+    @abstractmethod
+    async def find_compatible_users(self, user: "User", limit: int = 50) -> List["User"]:
+        """ Найти совместимых пользователей """
+        pass
+
+    @abstractmethod
     async def add_to_queue(self, user: "User") -> None:
-        """Добавить пользователя в очередь поиска"""
+        """ Добавить пользователя в очередь поиска """
         pass
 
     @abstractmethod
     async def remove_from_queue(self, user_id: int) -> None:
-        """Удалить пользователя из очереди"""
+        """ Удалить пользователя из очереди """
         pass
 
     @abstractmethod

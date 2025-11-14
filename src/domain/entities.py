@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -54,14 +55,30 @@ class User:
         scores['language'] = 1.0 if \
             self.criteria.language == other.criteria.language else 0.0
 
-        # 2. Совместимость уровня владения языком
-        scores['fluency'] = 0.8 # заглушка
+        # 2. Совместимость уровня владения языком (гауссово распределение)
+        fluency_diff = abs(self.criteria.fluency - other.criteria.fluency)
+        scores['fluency'] = math.exp(-0.5 * (fluency_diff / 1.5) ** 2)
 
-        # 3. Совместимость тем
-        scores['topics'] = 0.8 # заглушка
+        # 3. Совместимость тем (коэффициент Жаккара)
+        user_topics = set(self.criteria.topics)
+        other_topics = set(other.criteria.topics)
+
+        if user_topics and other_topics:
+            intersection = len(user_topics.intersection(other_topics))
+            union = len(user_topics.union(other_topics))
+            scores['topics'] = intersection / union if union > 0 else 0.0
+        else:
+            scores['topics'] = 0.0
 
         # 4. Совместимость предпочтений по знакомствам
-        scores['dating'] = 0.8 # заглушка
+        if self.gender != other.gender and \
+            self.criteria.dating == other.criteria.dating:
+            scores['dating'] = 1.0
+
+        elif self.criteria.dating or other.criteria.dating:
+            scores['dating'] = 0.3  # Частичная совместимость
+        else:
+            scores['dating'] = 1.0  # Оба не хотят знакомств
 
         # 5. Активность (заглушка для будущего ML)
         scores['activity'] = 0.7
@@ -70,7 +87,7 @@ class User:
         scores['success_rate'] = 0.7
 
         # Расчет общего скора
-        total_score = sum(scores[key] * weights[key] for key in scores)
+        total_score = round(sum(scores[key] * weights[key] for key in scores), 2)
 
         # Расчет уверенности
         confidence = self._calculate_confidence(scores)

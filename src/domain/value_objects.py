@@ -67,7 +67,7 @@ class MatchCriteria:
             relaxed_dating = False
 
         if step == 5:
-            relaxed_topics = ["general"]
+            relaxed_topics.append('general')
 
         if step == 8 and relaxed_fluency > 0:
             relaxed_fluency -= 1

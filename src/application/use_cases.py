@@ -38,36 +38,53 @@ class FindMatchUseCase:
                 logger.error(f"User {user_id} not found in repository")
                 raise UserNotFoundException(f"User {user_id} not found")
 
-            logger.debug(f"User {user_id} found, searching and reserving match")
+            logger.debug(f"User {user_id} found, searching for compatible candidates")
             
             # Записать размер очереди
             queue_size = await user_repo.get_queue_size()
             await self.metrics.record_queue_size(queue_size)
             logger.debug(f"Queue size: {queue_size}")
             
-            # Атомарно найти и зарезервировать совместимого пользователя
-            candidate = await user_repo.find_and_reserve_match(user)
+            # Найти совместимых кандидатов
+            candidates = await user_repo.find_compatible_users(user, limit=50)
+            candidates_count = len(candidates)
             
-            if not candidate:
-                logger.debug(f"No match found for user {user_id}")
+            if not candidates:
+                logger.debug(f"No compatible candidates found for user {user_id}")
                 await self.metrics.record_match_attempt(
                     user_id, time.time() - start_time, 0, False
                 )
                 return None
-
-            # Рассчитать скор совместимости
-            score = user.calculate_compatibility_score(
-                candidate,
-                config.matching.scoring_weights
-            )
             
-            # Создать матч
-            match = Match.create(user, candidate, score.total_score)
-            logger.info(f"Match created and reserved: {user_id} <-> {candidate.user_id}")
+            logger.debug(f"Found {candidates_count} compatible candidates for user {user_id}")
+            
+            # Выбрать лучшего кандидата используя _select_best_candidate
+            best_candidate = await self._select_best_candidate(user, candidates)
+            
+            if not best_candidate:
+                logger.debug(f"No candidate passed compatibility threshold for user {user_id}")
+                await self.metrics.record_match_attempt(
+                    user_id, time.time() - start_time, candidates_count, False
+                )
+                return None
+            
+            # Атомарно зарезервировать выбранного кандидата
+            reserved = await user_repo.reserve_candidate(user_id, best_candidate.candidate.user_id)
+            
+            if not reserved:
+                logger.debug(f"Failed to reserve candidate {best_candidate.candidate.user_id} for user {user_id}")
+                await self.metrics.record_match_attempt(
+                    user_id, time.time() - start_time, candidates_count, False
+                )
+                return None
+            
+            # Создать матч с уже рассчитанным скором
+            match = Match.create(user, best_candidate.candidate, best_candidate.score.total_score)
+            logger.info(f"Match created and reserved: {user_id} <-> {best_candidate.candidate.user_id} (score: {best_candidate.score.total_score})")
 
-            # Записать метрики
+            # Записать метрики с реальным количеством оцененных кандидатов
             await self.metrics.record_match_attempt(
-                user_id, time.time() - start_time, 1,
+                user_id, time.time() - start_time, candidates_count,
                 True, match.compatibility_score
             )
 
@@ -96,6 +113,7 @@ class FindMatchUseCase:
 
                 if score.total_score >= config.matching.compatibility_threshold:
                     scored_candidates.append(ScoredCandidate(candidate, score))
+                    logger.debug(f"Candidate {candidate.user_id} scored {score.total_score}")
 
             except Exception as e:
                 # Логируем ошибку, но продолжаем с другими кандидатами
@@ -104,11 +122,14 @@ class FindMatchUseCase:
                 continue
 
         if not scored_candidates:
+            logger.debug(f"No candidates passed threshold {config.matching.compatibility_threshold}")
             return None
 
         # Сортировать по скору и вернуть лучшего
         scored_candidates.sort(reverse=True)
-        return scored_candidates[0]
+        best = scored_candidates[0]
+        logger.debug(f"Best candidate selected: {best.candidate.user_id} with score {best.score.total_score}")
+        return best
 
 
 
@@ -200,7 +221,7 @@ class ProcessMatchRequestUseCase:
         is_searching = await uow.queue.is_searching(request.user_id)
         
         if not is_searching:
-            logger.info(f"User {request.user_id} not in search queue, skipping")
+            logger.debug(f"User {request.user_id} not in search queue, skipping")
             return False
 
         return True
