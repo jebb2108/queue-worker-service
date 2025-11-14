@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from src.config import config
 from src.container import cleanup_container, get_container
 from src.domain.entities import Match, User
 from src.domain.value_objects import MatchCriteria
@@ -40,14 +41,15 @@ def create_mtach() -> Match:
         user1=fake_user1,
         user2=fake_user2,
         room_id=str(uuid.uuid4()),  # Уникальный room_id
-        created_at=datetime.now(),
+        created_at=datetime.now(tz=config.timezone),
         compatibility_score=0.80
     )
     return match
 
 @pytest.mark.asyncio
 async def test_unit_of_work_with_adding_match():
-    await cleanup_container()
+
+    # container = await get_container()
 
     uow = SQLAlchemyUnitOfWork()
 

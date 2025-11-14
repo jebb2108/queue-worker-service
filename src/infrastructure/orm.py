@@ -4,8 +4,7 @@ from sqlalchemy import (
     Float, DateTime, SmallInteger, ARRAY,
     Boolean, ForeignKey, Enum
 )
-from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlalchemy.orm import registry, Relationship
+from sqlalchemy.orm import registry, relationship
 
 from src.domain.entities import Match, User
 from src.domain.value_objects import MatchCriteria, UserStatus
@@ -35,7 +34,7 @@ user_infos = Table(
     Column('criteria_id', ForeignKey('criteria_matches.id'), nullable=False),
     Column('gender', String(50), nullable=False),
     Column('lang_code', String(50), nullable=False),
-    Column('created_at', DateTime, nullable=False),
+    Column('created_at', DateTime(timezone=True), nullable=False),
     Column('status', Enum(UserStatus, native_enum=False, length=50), nullable=False)
 )
 
@@ -48,7 +47,7 @@ match_sessions = Table(
     Column('user2_id', ForeignKey('user_infos.id'), nullable=False),
     Column('room_id', String(256), nullable=False),
     Column('compatibility_score', Float, nullable=False),
-    Column('created_at', DateTime, nullable=False),
+    Column('created_at', DateTime(timezone=True), nullable=False),
     Column('status', String(50), nullable=False)
 )
 
@@ -77,12 +76,12 @@ async def start_mappers():
     mapper_registry.map_imperatively(MatchCriteria, criteria_matches)
     # Маппинг пользователей
     mapper_registry.map_imperatively(User, user_infos, properties={
-        'criteria': Relationship(MatchCriteria)
+        'criteria': relationship(MatchCriteria, lazy='selectin')
     })
     # Маппинг матч сессий
     mapper_registry.map_imperatively(Match, match_sessions, properties={
-        'user1': Relationship(User, foreign_keys=[match_sessions.c.user1_id]),
-        'user2': Relationship(User, foreign_keys=[match_sessions.c.user2_id])
+        'user1': relationship(User, foreign_keys=[match_sessions.c.user1_id], lazy='selectin'),
+        'user2': relationship(User, foreign_keys=[match_sessions.c.user2_id], lazy='selectin')
     })
 
     _mappers_initialized = True

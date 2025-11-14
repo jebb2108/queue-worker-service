@@ -101,7 +101,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         local user_language = ARGV[2]
         local user_fluency = tonumber(ARGV[3])
         local max_candidates = tonumber(ARGV[4])
-        local reservation_ttl = 30
+        local reservation_ttl = 5
 
         local queue_members = redis.call('LRANGE', queue_key, 0, -1)
         local candidates = {}
@@ -356,7 +356,7 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         super().__init__()
 
     async def add(self, match: Match) -> None:
-        await self._session.add(match)
+        self._session.add(match)
         logger.debug(f"Match {match.match_id} added to session")
 
 
@@ -381,57 +381,3 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         version = result.scalar_one()
         logger.debug(f"Resulted version for match: {version}")
         return version
-
-
-class PostgresSQLMatchRepository(AbstractMatchRepository, ABC):
-    """ Реализация репозитория матчей на PostgreSQL """
-
-    def __init__(self):
-        super().__init__()
-        self.pool = None
-
-    @asynccontextmanager
-    async def acquire_connection(self):
-        """ Получить соединение с базой данных """
-        if self.pool is None:
-            self.pool = await asyncpg.create_pool(dsn=config.database.url)
-        async with self.pool.acquire() as conn:
-            yield conn
-
-    async def add(self, match: Match) -> None:
-        """ Сохранить матч в базу данных """
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                """
-                INSERT INTO match_sessions 
-                (session_id, user1_id, user2_id, room_id, compatibility_score, created_at, status)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                """,
-                match.match_id,
-                match.user1.user_id,
-                match.user2.user_id,
-                match.room_id,
-                match.compatibility_score,
-                match.created_at.replace(tzinfo=None),
-                match.status
-            )
-
-
-    async def get(self, match_id: str) -> Match:
-        """ Получить сведения о пользователе """
-        async with self.acquire_connection() as conn:
-            match_fields = await conn.fetchrow(
-                """
-                SELECT
-                    session_id, user1_id, user2_id, room_id
-                    ,compatibility_score, created_at, status
-                FROM match_sessions
-                WHERE match_id = $1 AND status = 'active'
-                """
-            )
-            user1_fields = await conn.fetchrow(
-                """
-                SELECT * FROM user_infos
-                """
-            )
-            return None

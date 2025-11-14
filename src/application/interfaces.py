@@ -68,16 +68,20 @@ class AbstractMatchRepository(ABC):
         self._session = session
 
     @abstractmethod
-    def add(self, macth: "Match"):
+    async def add(self, match: "Match") -> None:
         raise NotImplementedError
 
     @abstractmethod
-    def get(self, session_id: str):
+    async def get(self, match_id: str):
         raise NotImplementedError
 
     @abstractmethod
     async def list(self) -> List[str]:
         """Получить список всех match_id из таблицы match_sessions"""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def version(self):
         raise NotImplementedError
 
 

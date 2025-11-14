@@ -1,3 +1,4 @@
+import asyncio
 import time
 from datetime import datetime
 from typing import Optional, List
@@ -168,6 +169,7 @@ class ProcessMatchRequestUseCase:
                 logger.debug("Request either proccessed or rejected")
                 return True # Запрос обработан (отклонен или отложен)
 
+
             if await self._should_delay_processing(request):
                 logger.debug(f"Delaying processing for user {request.user_id}")
                 await self._schedule_retry(request)
@@ -183,15 +185,14 @@ class ProcessMatchRequestUseCase:
 
                 if match:
                     # Сохраняет матч в репозиторий
-                    res = await self.uow.matches.list()
-                    logger.debug(f"All matches rn: {res}")
                     await self.uow.matches.add(match)
+
                     # Сверяет версии БД и UoW, чтобы исключить параллелизм
                     try:
                         current_version = await self.uow.matches.version()
-                        logger.info(f"Version check for user {request.user_id}: current={current_version}, expected={self.uow.db_version + 1}")
-                        if current_version == self.uow.db_version + 1:
-                            # Производит фианльный комит в БД
+                        logger.info(f"Version check for user {request.user_id}: current={current_version}, expected version={self.uow.db_version}")
+                        if current_version == self.uow.db_version:
+                            # Версия не изменилась - можно коммитить
                             await self.uow.commit()
                             # Сохраняет изменения в репозиториях
                             user_ids = [match.user1.user_id, match.user2.user_id]
@@ -201,10 +202,11 @@ class ProcessMatchRequestUseCase:
                         else:
                             # Пессемистичный сценарий параллелизма,
                             # при котором никакие изменения в БД не записываются
-                            self.uow.db_version = current_version
-                            logger.warning(f"Version mismatch for user {request.user_id}, rolling back")
+                            logger.warning(f"Version mismatch for user {request.user_id}:, current={current_version}, expected={self.uow.db_version} rolling back")
+                            await self.redis_repo.release_reservations([request.user_id])
                     except Exception as e:
                         # В случае ошибки при работе с версиями, откатываем транзакцию
+                        await self.redis_repo.release_reservations([request.user_id])
                         logger.error(f"Version check error for user {request.user_id}: {e}")
                         raise
 
@@ -233,6 +235,14 @@ class ProcessMatchRequestUseCase:
             # Запрос отменен или завершен
             await self._cleanup_user_state(request.user_id)
             return False
+
+        # В _should_process_request()
+        # Проверить, не зарезервирован ли сам пользователь
+        is_reserved = await self.redis_repo.redis.exists(f"reserved:{request.user_id}")
+        if is_reserved:
+            logger.debug(f"User {request.user_id} is reserved, waiting")
+            await asyncio.sleep(1)  # Короткая задержка
+            return False  # Повторить позже
 
         # Получить состояние пользователя
         state = await self.state_repo.get_state(request.user_id)

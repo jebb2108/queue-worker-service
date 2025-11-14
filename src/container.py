@@ -134,15 +134,18 @@ class ServiceContainer:
 
         # SQLAlchemy подключение
         try:
-            await start_mappers()
-
             engine = create_async_engine(
-            url=config.database.url,
-            isolation_level="REPEATABLE READ"
-        )
+                url=config.database.url,
+                pool_pre_ping=True,
+                pool_size=20,
+                max_overflow=0,
+                echo=False
+            )
             self.register_instance(sqlalchemy.Engine, engine)
-            session_factory = async_sessionmaker(engine)
+            session_factory = async_sessionmaker(engine, expire_on_commit=False)
             self.register_instance(async_sessionmaker, session_factory)
+
+            await start_mappers()
 
         except Exception as e:
             logging.warning(f"Failed to connect to SQLAlhemy: {e}. Proceeding without database connection.")
