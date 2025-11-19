@@ -14,7 +14,7 @@ from src.config import config
 from src.domain.value_objects import MatchRequest
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger.setLevel(config.log_level.strip())
 
 
 class CircuitBreakerOpenException(Exception):

@@ -12,7 +12,7 @@ from src.container import get_container, cleanup_container
 from src.handlers.match_handler import MatchRequestHandler
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger.setLevel(config.log_level.strip())
 
 
 class WorkerService:

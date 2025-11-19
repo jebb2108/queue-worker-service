@@ -52,4 +52,13 @@ COPY loki-config.yaml .
 COPY grafana/datasources.yaml ./grafana/datasources.yaml
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+
+RUN echo "DEBUG=$DEBUG"
+RUN echo "LOG_LEVEL=$LOG_LEVEL"
+RUN echo "REDIS_URL=$REDIS_URL"
+RUN echo "GATEWAY_REDIS_URL=$GATEWAY_REDIS_URL"
+RUN echo "DATABASE_URL=$DATABASE_URL"
+RUN echo "RABBITMQ_URL=$RABBITMQ_URL"
+RUN echo "MATCH_RECEIVE_URL=$MATCH_RECEIVE_URL"
+
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

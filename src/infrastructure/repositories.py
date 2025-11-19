@@ -22,7 +22,7 @@ from src.domain.value_objects import UserState, MatchCriteria, UserStatus
 from src.infrastructure.orm import match_sessions as orm_match
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger.setLevel(config.log_level.strip())
 
 
 class RedisUserRepository(AbstractUserRepository, ABC):

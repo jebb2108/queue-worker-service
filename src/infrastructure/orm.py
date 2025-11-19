@@ -8,11 +8,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import registry, relationship
 
+from src.config import config
 from src.domain.entities import Match, User
 from src.domain.value_objects import MatchCriteria, UserStatus
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger.setLevel(config.log_level.strip())
 
 mapper_registry = registry()
 metadata = MetaData()

@@ -6,14 +6,14 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from src.application.interfaces import AbstractMetricsCollector, AbstractUnitOfWork
 from src.application.use_cases import ProcessMatchRequestUseCase
+from src.config import config
 from src.container import get_container
 from src.domain.exceptions import DomainException
 from src.domain.value_objects import MatchRequest
 from src.infrastructure.services import RateLimiter, CurcuitBreaker
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
-
+logger.setLevel(config.log_level.strip())
 
 class MatchRequestHandler:
     """Обработчик запросов на поиск собеседника"""

@@ -15,7 +15,7 @@ from src.domain.value_objects import MatchRequest, UserStatus, UserState
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger.setLevel(config.log_level.strip())
 
 
 class FindMatchUseCase:

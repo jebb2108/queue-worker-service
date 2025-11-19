@@ -9,7 +9,7 @@ from src.application.interfaces import (
 from src.infrastructure.repositories import SQLAlchemyMatchRepository
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger.setLevel(config.log_level.strip())
 
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):

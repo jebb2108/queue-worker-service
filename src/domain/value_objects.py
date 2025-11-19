@@ -5,10 +5,11 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Dict
 
+from src.config import config
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger.setLevel(config.log_level.strip())
 
 
 class UserStatus(Enum):
