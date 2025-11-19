@@ -73,7 +73,7 @@ services:
       POSTGRES_USER: onlynone
       POSTGRES_PASSWORD: random123
     ports:
-      - "5432:5432"
+      - "5433:5433"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -101,7 +101,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5672:5672"
+      - "5673:5673"
       - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: guest
