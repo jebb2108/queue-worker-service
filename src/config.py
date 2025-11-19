@@ -63,12 +63,12 @@ class RabbitMQConfig:
 @dataclass
 class TelegranBotConfig:
     """ Конфигурация Telegram Bot"""
-    receive_match_url: str = os.getenv("TGBOT_MATCH_RECEIVE_URL")
+    receive_match_url: str = os.getenv("MATCH_RECEIVE_URL")
 
 @dataclass
 class WorkerConfig:
 
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
+    debug: bool = os.getenv("DEBUG", "FALSE")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     timezone: timezone = timezone(timedelta(hours=3))
 

@@ -561,10 +561,11 @@ class TelegramNotificationService(AbstractNotificationService, ABC):
 
     url = config.tgbot.receive_match_url
 
-    async def send_match_id_request(self, match_id: str):
+    async def send_match_id_request(self, user_id: int, match_id: str):
 
         headers = 'Content-Type: application/json'
         json_body=json.dumps({
+            'user_id': user_id,
             'match_id': match_id
         })
         try:

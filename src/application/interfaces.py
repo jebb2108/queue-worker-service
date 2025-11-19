@@ -195,5 +195,5 @@ class AbstractUnitOfWork(ABC):
 class AbstractNotificationService(ABC):
 
     @abstractmethod
-    async def send_match_id_request(self, match_id: str) -> None:
+    async def send_match_id_request(self, user_id: int, match_id: str) -> None:
         raise NotImplementedError

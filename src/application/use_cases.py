@@ -188,9 +188,9 @@ class ProcessMatchRequestUseCase:
                     try:
                         await uow.commit()
                         # Отправляю match_id обратно на фронтенд
-                        # from src.container import get_notification_service
-                        # notification_service = await get_notification_service()
-                        # await notification_service.send_match_id_request(match.match_id)
+                        from src.container import get_notification_service
+                        notification_service = await get_notification_service()
+                        await notification_service.send_match_id_request(request.user_id, match.match_id)
                         # Логирую найденную пару из пользователей
                         user_ids = [match.user1.user_id, match.user2.user_id]
                         logger.info(f"Match committed for users {user_ids}")
