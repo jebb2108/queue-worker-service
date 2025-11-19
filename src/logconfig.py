@@ -8,30 +8,24 @@ from src.config import config
 class RootLogger:
     """Простой логгер, работающий с корневым регистром"""
 
-    def __init__(self):
-        # Базовая конфигурация корневого логгера
-        logging.basicConfig(
-            level=self.convert_level(config.log_level),
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.StreamHandler()
-            ]
-        )
-        self.root_logger = logging.getLogger()
+    # def __init__(self):
+    #     # Базовая конфигурация корневого логгера
+    #     logging.basicConfig(
+    #         level=10,
+    #         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    #         handlers=[
+    #             logging.StreamHandler()
+    #         ]
+    #     )
+    #     self.root_logger = logging.getLogger()
 
-
-    def setup_logger(self, name: str, level: str | int = config.log_level):
-        """Добавляет логгер с указанным именем и уровнем"""
-        logger = logging.getLogger(name)
-        logger.setLevel(self.convert_level(level))
-        return logger
 
     @staticmethod
-    def convert_level(level: str | int):
-        """Возвращает числовое значение"""
-        if isinstance(level, str):
-            level = level.strip().upper()
-        return logging.getLevelName(level)
+    def setup_logger(name: str):
+        """Добавляет логгер с указанным именем и уровнем"""
+        logger = logging.getLogger(name)
+        logger.setLevel(10)
+        return logger
 
 
 class CustomLogger:
@@ -136,12 +130,5 @@ class CustomLogger:
         return logging.getLevelName(level)
 
 
-try:
-    opt_logger = RootLogger() if config.debug else CustomLogger()
-except Exception as e:
-    print("String: ", config.debug)
-    print(f"ERROR creating logger: {e}")
-    print(f"Falling back to basic config with INFO level")
-    # Принудительно устанавливаем INFO уровень
-    logging.basicConfig(level=logging.INFO)
-    opt_logger = RootLogger()  # или CustomLogger()
+
+opt_logger = RootLogger() if config.debug else CustomLogger()
