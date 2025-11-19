@@ -227,27 +227,40 @@ class ProcessMatchRequestUseCase:
 
     async def _should_process_request(self, request: MatchRequest, uow: AbstractUnitOfWork):
         """ Определить, следует ли обрабатывать запрос """
-        
-        # Проверить статус запроса
-        if request.status in [UserStatus.CANCELED.value, UserStatus.MATCHED.value]:
-            await self._cleanup_user_state(request.user_id, uow)
-            logger.info("User %s left queue", request.user_id)
-            return False
 
-        # Проверить, не истек ли запрос
-        elapsed = datetime.now(tz=config.timezone) - request.created_at
-        if elapsed.total_seconds() >= config.matching.max_wait_time:
-            await self._handle_timeout(request.user_id, None, uow, elapsed.total_seconds())
-            return False
+        state: UserState = await uow.states.get_state(request.user_id)
 
-        # Проверить, находится ли пользователь в поиске (единственный источник истины - Redis)
-        is_searching = await uow.queue.is_searching(request.user_id)
-        
-        if not is_searching:
-            logger.debug(f"User {request.user_id} not in search queue, skipping")
-            return False
+        if state:
+            # Проверить статус запроса
+            if state.status in [UserStatus.CANCELED, UserStatus.MATCHED]:
+                await self._cleanup_user_state(request.user_id, uow)
+                logger.info("User %s left queue", request.user_id)
+                return False
 
-        return True
+            # Проверить, не истек ли запрос
+            elapsed = datetime.now(tz=config.timezone) - request.created_at
+            if elapsed.total_seconds() >= config.matching.max_wait_time:
+                await self._handle_timeout(request.user_id, None, uow, elapsed.total_seconds())
+                return False
+
+            # Проверить, находится ли пользователь в поиске (единственный источник истины - Redis)
+            is_searching = await uow.queue.is_searching(request.user_id)
+
+            if not is_searching:
+                logger.debug(f"User {request.user_id} not in search queue, skipping")
+                return False
+
+            return True
+
+        else:
+
+            new_state = UserState(
+                user_id=request.user_id,
+                status=UserStatus.WAITING,
+                created_at=time.time()
+            )
+            await uow.states.save_state(new_state)
+            return True
 
 
     @staticmethod
