@@ -55,7 +55,7 @@ async def submit_match_request(
             detail=f"Failed to submit match request: {str(e)}"
         )
 
-@router.get("queue/status")
+@router.get("/queue/status")
 async def get_queue_status(
         user_repo: AbstractUserRepository = Depends(get_user_repository)
 ):
