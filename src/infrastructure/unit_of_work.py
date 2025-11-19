@@ -2,10 +2,12 @@ import logging
 from abc import ABC
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
 from src.application.interfaces import (
     AbstractUnitOfWork, AbstractUserRepository,
     AbstractStateRepository
 )
+from src.config import config
 from src.infrastructure.repositories import SQLAlchemyMatchRepository
 
 logger = logging.getLogger(__name__)
