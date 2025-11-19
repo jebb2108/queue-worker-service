@@ -69,7 +69,7 @@ class TelegranBotConfig:
 class WorkerConfig:
 
     debug: bool = os.getenv("DEBUG", "FALSE").strip().upper()
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_level: str = os.getenv("LOG_LEVEL", "INFO").strip().upper()
     timezone: timezone = timezone(timedelta(hours=3))
 
     # Конфигурации компонентов
