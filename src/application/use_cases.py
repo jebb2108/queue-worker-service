@@ -2,6 +2,8 @@ import time
 from datetime import datetime
 from typing import Optional, List
 
+import logging
+
 from src.application.interfaces import (
     AbstractUserRepository, AbstractStateRepository,
     AbstractMessagePublisher, AbstractMetricsCollector, AbstractUnitOfWork
@@ -10,9 +12,10 @@ from src.config import config
 from src.domain.entities import Match, User, ScoredCandidate
 from src.domain.exceptions import UserNotFoundException, MatchingException
 from src.domain.value_objects import MatchRequest, UserStatus, UserState
-from src.logconfig import opt_logger as log
 
-logger = log.setup_logger(name='use cases')
+
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 
 
 class FindMatchUseCase:

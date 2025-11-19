@@ -1,3 +1,5 @@
+import logging
+
 import sqlalchemy
 from sqlalchemy import (
     MetaData, Table, Column, String, BigInteger,
@@ -8,9 +10,9 @@ from sqlalchemy.orm import registry, relationship
 
 from src.domain.entities import Match, User
 from src.domain.value_objects import MatchCriteria, UserStatus
-from src.logconfig import opt_logger as log
 
-logger = log.setup_logger(name="ORM")
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 
 mapper_registry = registry()
 metadata = MetaData()

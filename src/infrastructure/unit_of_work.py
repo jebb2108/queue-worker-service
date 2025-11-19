@@ -1,19 +1,15 @@
-import asyncio
-import time
+import logging
 from abc import ABC
-from typing import List
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.application.interfaces import (
     AbstractUnitOfWork, AbstractUserRepository,
     AbstractStateRepository
 )
-from src.domain.value_objects import UserStatus
-from src.logconfig import opt_logger as log
 from src.infrastructure.repositories import SQLAlchemyMatchRepository
 
-logger = log.setup_logger('uow')
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):

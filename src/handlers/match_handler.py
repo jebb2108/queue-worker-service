@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Dict, Any
 
@@ -9,9 +10,9 @@ from src.container import get_container
 from src.domain.exceptions import DomainException
 from src.domain.value_objects import MatchRequest
 from src.infrastructure.services import RateLimiter, CurcuitBreaker
-from src.logconfig import opt_logger as log
 
-logger = log.setup_logger(name='match_handler')
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 
 
 class MatchRequestHandler:

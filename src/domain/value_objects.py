@@ -1,13 +1,14 @@
+import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import List, Dict, Any
-
-from src.logconfig import opt_logger as log
+from typing import List, Dict
 
 
-logger = log.setup_logger("value abjects")
+
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 
 
 class UserStatus(Enum):

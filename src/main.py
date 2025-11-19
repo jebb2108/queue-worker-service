@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sys
 from typing import Optional
 
@@ -9,9 +10,10 @@ from faststream.rabbit.annotations import RabbitMessage
 from src.config import config
 from src.container import get_container, cleanup_container
 from src.handlers.match_handler import MatchRequestHandler
-from src.logconfig import opt_logger as log
 
-logger = log.setup_logger(name='worker')
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
+
 
 class WorkerService:
     """ Основной класс Worker Service """
