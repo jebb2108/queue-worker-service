@@ -14,7 +14,7 @@ from src.infrastructure.services import RabbitMQMessagePublisher
 from src.models import MatchRequestModel, MatchResponse, HealthResponse
 
 
-router = APIRouter()
+router = APIRouter(prefix="api/v0")
 
 @router.post("/match/toggle", response_model=MatchResponse)
 async def submit_match_request(
