@@ -65,7 +65,7 @@ async def get_queue_status(
         "status": "active" if queue_size > 0 else "empty"
     }
 
-@router.get("/queue/user/{user_id}/status")
+@router.get("/queue/{user_id}/status")
 async def get_user_queue_status(
         user_id: int,
         state_repo: AbstractStateRepository = Depends(get_state_repository)
