@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher,
-    AbstractMetricsCollector, AbstractUnitOfWork
+    AbstractMetricsCollector, AbstractUnitOfWork, AbstractNotificationService
 )
 from src.application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
 from src.config import config
@@ -19,7 +19,7 @@ from src.infrastructure.repositories import (
     RedisUserRepository, MemoryStateRepository, SQLAlchemyMatchRepository
 )
 from src.infrastructure.services import RabbitMQMessagePublisher, CurcuitBreaker, RateLimiter, \
-    PrometheusMetricsCollector
+    PrometheusMetricsCollector, TelegramNotificationService
 from src.infrastructure.unit_of_work import SQLAlchemyUnitOfWork
 
 
@@ -162,6 +162,7 @@ class ServiceContainer:
         # Infrastructure services
         self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)
         self.register_singleton(AbstractMetricsCollector, PrometheusMetricsCollector)
+        self.register_singleton(AbstractNotificationService, TelegramNotificationService)
 
         # # Utility services
         self.register_singleton(CurcuitBreaker, CurcuitBreaker)
@@ -252,3 +253,8 @@ async def get_metrics_collector() -> AbstractMetricsCollector:
     """ Получить сборщик рассчетов """
     container = await get_container()
     return await container.get(AbstractMetricsCollector)
+
+async def get_notification_service() -> AbstractNotificationService:
+    """ Получить сервис для уведомлений о найденом партнере """
+    container = await get_container()
+    return await container.get(AbstractNotificationService)

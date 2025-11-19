@@ -59,6 +59,12 @@ class RabbitMQConfig:
     match_queue: str =  "match_requests"
     match_exchange: str = "users"
 
+
+@dataclass
+class TelegranBotConfig:
+    """ Конфигурация Telegram Bot"""
+    receive_match_url: str = os.getenv("TGBOT_MATCH_RECEIVE_URL")
+
 @dataclass
 class WorkerConfig:
 
@@ -71,13 +77,14 @@ class WorkerConfig:
     database: DatabaseConfig = None
     rabbitmq: RabbitMQConfig = None
     matching: MatchingConfig = None
+    tgbot: TelegranBotConfig = None
 
     cache_ttl: int = 300 # в секундах
 
     # Статусы поиска
-    SEARCH_STARTED: str = 'search_started'
-    SEARCH_CANCELED: str = 'search_canceled'
-    SEARCH_COMPLETED: str = 'search_completed'
+    STARTED: str = 'search_started'
+    CANCELED: str = 'search_canceled'
+    COMPLETED: str = 'search_completed'
     WAITING_TIME_EXPIRED: str = 'waiting_time_expired'
 
 
@@ -86,6 +93,7 @@ class WorkerConfig:
         if self.database is None: self.database = DatabaseConfig()
         if self.rabbitmq is None: self.rabbitmq = RabbitMQConfig()
         if self.matching is None: self.matching = MatchingConfig()
+        if self.tgbot is None: self.tgbot = TelegranBotConfig()
 
 
 

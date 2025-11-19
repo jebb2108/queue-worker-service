@@ -187,6 +187,11 @@ class ProcessMatchRequestUseCase:
                     
                     try:
                         await uow.commit()
+                        # Отправляю match_id обратно на фронтенд
+                        # from src.container import get_notification_service
+                        # notification_service = await get_notification_service()
+                        # await notification_service.send_match_id_request(match.match_id)
+                        # Логирую найденную пару из пользователей
                         user_ids = [match.user1.user_id, match.user2.user_id]
                         logger.info(f"Match committed for users {user_ids}")
                         return True
@@ -222,8 +227,9 @@ class ProcessMatchRequestUseCase:
         """ Определить, следует ли обрабатывать запрос """
         
         # Проверить статус запроса
-        if request.status in [config.SEARCH_CANCELED, config.SEARCH_COMPLETED]:
+        if request.status in [UserStatus.CANCELED.value, UserStatus.MATCHED.value]:
             await self._cleanup_user_state(request.user_id, uow)
+            logger.info("User %s left queue", request.user_id)
             return False
 
         # Проверить, не истек ли запрос
@@ -345,12 +351,12 @@ class ProcessMatchRequestUseCase:
         await self.metrics.record_queue_wait_time(wait_time or 0)
         await self.metrics.record_match_attempt(user_id, wait_time or 0, 0, False)
         await self.metrics.record_user_status_change(UserStatus.WAITING, UserStatus.EXPIRED)
-        logger.debug("Time wait for message % s expired", user_id)
+        logger.info("Time wait for message % s expired", user_id)
         # Очистить состояние
         await self._cleanup_user_state(user_id, uow)
 
 
-    async def _cleanup_user_state(self, user_id: int, uow):
+    async def _cleanup_user_state(self, user_id: int, uow: AbstractUnitOfWork):
         """ Очистить состояние пользователя """
         try:
             await uow.states.delete_state(user_id)

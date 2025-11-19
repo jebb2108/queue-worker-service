@@ -1,23 +1,19 @@
-import asyncio
 import json
 import time
+from abc import ABC
 from typing import List, Dict, Any
 
 import aio_pika
+import aiohttp
 from prometheus_client import Counter, Gauge, Histogram, CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from redis.asyncio import Redis as redis
 
-from src.application.interfaces import AbstractMetricsCollector
+from src.application.interfaces import AbstractMetricsCollector, AbstractNotificationService
+from src.config import config
+from src.domain.value_objects import MatchRequest
 from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='services')
-
-
-from src.logconfig import opt_logger as log
-from src.config import config
-from src.domain.value_objects import MatchRequest
-
-logger = log.setup_logger(name='match_endpoints')
 
 
 class CircuitBreakerOpenException(Exception):
@@ -559,3 +555,30 @@ class PrometheusMetricsCollector(AbstractMetricsCollector):
                 'error': str(e),
                 'timestamp': time.time()
             }
+
+
+class TelegramNotificationService(AbstractNotificationService, ABC):
+
+    url = config.tgbot.receive_match_url
+
+    async def send_match_id_request(self, match_id: str):
+
+        headers = 'Content-Type: application/json'
+        json_body=json.dumps({
+            'match_id': match_id
+        })
+        try:
+
+            async with aiohttp.ClientSession() as session:
+                async with await session.post(
+                        url=self.url,
+                        headers=headers,
+                        json=json_body
+                ) as resp:
+                    if resp.status == 201: return True
+                    raise
+
+        except Exception as e:
+            logger.error(f"Error sending url request: {e}")
+
+

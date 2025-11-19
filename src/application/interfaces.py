@@ -190,3 +190,10 @@ class AbstractUnitOfWork(ABC):
     @abstractmethod
     async def _commit(self):
         raise NotImplementedError
+
+
+class AbstractNotificationService(ABC):
+
+    @abstractmethod
+    async def send_match_id_request(self, match_id: str) -> None:
+        raise NotImplementedError

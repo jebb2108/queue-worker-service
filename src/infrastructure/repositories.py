@@ -16,7 +16,7 @@ from src.application.interfaces import (
 )
 from src.config import config
 from src.domain.entities import User, Match
-from src.domain.exceptions import UserAlreadyInSearch
+from src.domain.exceptions import UserAlreadyInSearch, UserNotFoundException
 from src.domain.value_objects import UserState, MatchCriteria, UserStatus
 from src.infrastructure.orm import match_sessions as orm_match
 from src.logconfig import opt_logger as log
@@ -322,13 +322,19 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         """ Добавить пользователя в очередь поиска """
 
         # Проверка на существующего пользователя в очереди
-        if await self.is_searching(user_id=user.user_id):
+        is_searching = await self.is_searching(user_id=user.user_id)
+
+        if is_searching and user.status == UserStatus.WAITING:
             raise UserAlreadyInSearch
 
-        await self.save(user)  # Сохранить данные пользователя
-        await self.redis.lpush("waiting_queue", user.user_id)
-        await self.redis.setex(f"searching:{user.user_id}", config.matching.max_wait_time, 1)
-        logger.debug("User %s added to queue", user.user_id)
+        elif not is_searching and user.status == UserStatus.CANCELED:
+            raise UserNotFoundException
+
+        elif not is_searching:
+            await self.save(user)  # Сохранить данные пользователя
+            await self.redis.lpush("waiting_queue", user.user_id)
+            await self.redis.setex(f"searching:{user.user_id}", config.matching.max_wait_time, 1)
+            logger.debug("User %s added to queue", user.user_id)
 
     async def remove_from_queue(self, user_id: int) -> None:
         """ Удалить пользователя из очереди """
