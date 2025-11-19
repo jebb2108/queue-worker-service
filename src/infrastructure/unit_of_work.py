@@ -1,4 +1,3 @@
-import logging
 from abc import ABC
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -7,11 +6,11 @@ from src.application.interfaces import (
     AbstractUnitOfWork, AbstractUserRepository,
     AbstractStateRepository
 )
-from src.config import config
 from src.infrastructure.repositories import SQLAlchemyMatchRepository
+from src.logconfig import opt_logger as log
 
-logger = logging.getLogger(__name__)
-logger.setLevel(config.log_level.strip())
+logger = log.setup_logger(name='use cases')
+
 
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):

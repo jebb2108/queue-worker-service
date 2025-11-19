@@ -1,5 +1,4 @@
 import json
-import logging
 import time
 from abc import ABC
 from typing import List, Dict, Any
@@ -12,9 +11,9 @@ from redis.asyncio import Redis as redis
 from src.application.interfaces import AbstractMetricsCollector, AbstractNotificationService
 from src.config import config
 from src.domain.value_objects import MatchRequest
+from src.logconfig import opt_logger as log
 
-logger = logging.getLogger(__name__)
-logger.setLevel(config.log_level.strip())
+logger = log.setup_logger(name='use cases')
 
 
 class CircuitBreakerOpenException(Exception):

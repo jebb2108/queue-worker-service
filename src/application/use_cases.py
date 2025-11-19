@@ -13,9 +13,8 @@ from src.domain.entities import Match, User, ScoredCandidate
 from src.domain.exceptions import UserNotFoundException, MatchingException
 from src.domain.value_objects import MatchRequest, UserStatus, UserState
 
-
-logger = logging.getLogger(__name__)
-logger.setLevel(config.log_level.strip())
+from src.logconfig import opt_logger as log
+logger = log.setup_logger(name='use cases')
 
 
 class FindMatchUseCase:

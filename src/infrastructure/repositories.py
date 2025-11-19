@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import time
 from abc import ABC
 from asyncio import sleep, CancelledError
@@ -20,9 +19,10 @@ from src.domain.entities import User, Match
 from src.domain.exceptions import UserAlreadyInSearch, UserNotFoundException
 from src.domain.value_objects import UserState, MatchCriteria, UserStatus
 from src.infrastructure.orm import match_sessions as orm_match
+from src.logconfig import opt_logger as log
 
-logger = logging.getLogger(__name__)
-logger.setLevel(config.log_level.strip())
+logger = log.setup_logger(name='use cases')
+
 
 
 class RedisUserRepository(AbstractUserRepository, ABC):
