@@ -30,7 +30,7 @@ class RootLogger:
     def convert_level(level: str | int):
         """Возвращает числовое значение"""
         if isinstance(level, str):
-            level = level.upper() # Форматирую dEbUG -> DEBUG
+            level = level.strip().upper()
         return logging.getLevelName(level)
 
 
@@ -104,7 +104,7 @@ class CustomLogger:
         logger = logging.getLogger(name)
 
         # Устанавливаем уровень
-        logger.setLevel(self.conver_level(level))
+        logger.setLevel(self.convert_level(level))
 
         # Очищаем существующие обработчики
         logger.handlers.clear()
@@ -113,7 +113,7 @@ class CustomLogger:
         console_handler = logging.StreamHandler(sys.stdout)
 
         # Устанавливаем уровень
-        console_handler.setLevel(self.conver_level(level))
+        console_handler.setLevel(self.convert_level(level))
 
         # Настраиваем форматтер с датой и центрированным именем
         # Добавляем дату в формат времени и центрируем имя модуля
@@ -129,10 +129,10 @@ class CustomLogger:
         return logger
 
     @staticmethod
-    def conver_level(level):
+    def convert_level(level):
         """Возвращает числовое значение"""
         if isinstance(level, str):
-            level = level.upper() # Форматирую dEbUG -> DEBUG
+            level = level.strip().upper() # Форматирую dEbUG -> DEBUG
         return logging.getLevelName(level)
 
 
