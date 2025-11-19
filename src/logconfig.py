@@ -136,4 +136,12 @@ class CustomLogger:
         return logging.getLevelName(level)
 
 
-opt_logger = RootLogger() if config.debug else  CustomLogger()
+try:
+    opt_logger = RootLogger() if config.debug else CustomLogger()
+except Exception as e:
+    print("String: ", config.debug)
+    print(f"ERROR creating logger: {e}")
+    print(f"Falling back to basic config with INFO level")
+    # Принудительно устанавливаем INFO уровень
+    logging.basicConfig(level=logging.INFO)
+    opt_logger = RootLogger()  # или CustomLogger()
