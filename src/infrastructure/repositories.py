@@ -328,19 +328,16 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         if is_searching and user.status == UserStatus.WAITING:
             raise UserAlreadyInSearch
 
-        elif not is_searching and user.status == UserStatus.CANCELED:
-            raise UserNotFoundException
-
-        elif not is_searching:
-            await self.save(user)  # Сохранить данные пользователя
-            await self.redis.lpush("waiting_queue", user.user_id)
-            await self.redis.setex(f"searching:{user.user_id}", config.matching.max_wait_time, 1)
-            logger.debug("User %s added to queue", user.user_id)
+        await self.save(user)  # Сохранить данные пользователя
+        await self.redis.lpush("waiting_queue", user.user_id)
+        await self.redis.setex(f"searching:{user.user_id}", config.matching.max_wait_time, 1)
+        logger.debug("User %s added to queue", user.user_id)
 
     async def remove_from_queue(self, user_id: int) -> None:
         """ Удалить пользователя из очереди """
+        count = (await self.redis.lrange("waiting_queue", 0, -1)).count(user_id)
         async with self.redis.pipeline() as pipe:
-            await pipe.lrem("waiting_queue", 1, user_id)
+            await pipe.lrem("waiting_queue", count, user_id)
             await pipe.delete(f"searching:{user_id}")
             await pipe.delete(f"user:{user_id}")
             await pipe.delete(f"criteria:{user_id}")

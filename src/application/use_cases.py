@@ -2,7 +2,6 @@ import time
 from datetime import datetime
 from typing import Optional, List
 
-import logging
 
 from src.application.interfaces import (
     AbstractUserRepository, AbstractStateRepository,

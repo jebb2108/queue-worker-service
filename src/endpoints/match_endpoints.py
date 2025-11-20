@@ -25,8 +25,9 @@ async def submit_match_request(
     """
     Принять запрос на поиск матча и отправить в очередь
     """
+
     user_status = UserStatus.WAITING.value if \
-        request_data.action == 'join' else UserStatus.CANCELED.value
+        await user_repo.is_searching(request_data.user_id) else UserStatus.CANCELED.value
 
     try:
         # Подготовить данные для очереди
@@ -46,8 +47,6 @@ async def submit_match_request(
 
     except UserAlreadyInSearch:
         return MatchResponse(status="rejected", message=f"User {request_data.user_id} already in search")
-    except UserNotFoundException:
-        return MatchResponse(status="rejected", message=f"User {request_data.user_id} not in queue to cancel")
 
     except Exception as e:
         raise HTTPException(
