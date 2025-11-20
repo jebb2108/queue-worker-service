@@ -26,8 +26,8 @@ async def submit_match_request(
     Принять запрос на поиск матча и отправить в очередь
     """
 
-    user_status = UserStatus.WAITING.value if \
-        await user_repo.is_searching(request_data.user_id) else UserStatus.CANCELED.value
+    user_status = UserStatus.CANCELED.value if \
+        await user_repo.is_searching(request_data.user_id) else UserStatus.WAITING.value
 
     try:
         # Подготовить данные для очереди
