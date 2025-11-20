@@ -335,7 +335,8 @@ class RedisUserRepository(AbstractUserRepository, ABC):
 
     async def remove_from_queue(self, user_id: int) -> None:
         """ Удалить пользователя из очереди """
-        count = (await self.redis.lrange("waiting_queue", 0, -1)).count(user_id)
+        q = await self.redis.lrange("waiting_queue", 0, -1)
+        count = list(map(int, q)).count(user_id)
         async with self.redis.pipeline() as pipe:
             await pipe.lrem("waiting_queue", count, user_id)
             await pipe.delete(f"searching:{user_id}")

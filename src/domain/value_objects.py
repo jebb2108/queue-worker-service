@@ -2,7 +2,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from src.logconfig import opt_logger as log
 
@@ -24,7 +24,7 @@ class MatchCriteria:
     language: str
     fluency: int
     topics: List[str]
-    dating: bool
+    dating: int
 
     def __post_init__(self):
         # Валидация критериев
@@ -37,8 +37,8 @@ class MatchCriteria:
         if not isinstance(self.topics, list) or not self.topics:
             raise ValueError("Topics must be a non-empty list")
 
-        if not isinstance(self.dating, bool):
-            raise ValueError("Dating must be a boolean")
+        if not isinstance(self.dating, int) or self.dating not in [0, 1]:
+            raise ValueError("Dating must be a boolean integer")
 
     def is_compatible_with(self, other: 'MatchCriteria') -> bool:
         """Базовая проверка совместимости критериев"""
@@ -64,7 +64,7 @@ class MatchCriteria:
         relaxed_fluency = self.fluency
 
         if step == 3:
-            relaxed_dating = False
+            relaxed_dating = 0
 
         if step == 5:
             relaxed_topics.append('general')
@@ -101,7 +101,7 @@ class MatchRequest:
             language=criteria_data.get('language', ''),
             fluency=int(criteria_data.get('fluency', 0)),
             topics=criteria_data.get('topics', []),
-            dating=criteria_data.get('dating', False)
+            dating=criteria_data.get('dating', 0)
         )
 
 
@@ -162,7 +162,7 @@ class UserState:
     status: UserStatus
     created_at: float
     retry_count: int = 0
-    last_updated: float = None
+    last_updated: Optional[float] = None
 
     def __post_init__(self):
         if self.last_updated is None:
@@ -190,4 +190,15 @@ class UserState:
             created_at=self.created_at,
             retry_count=self.retry_count,
             last_updated=time.time()
+        )
+
+    @classmethod
+    def from_dict(cls, new_status: dict) -> "UserState":
+        """ Создание объекта из словаря """
+        return cls(
+            user_id=new_status.get('user_id'),
+            status=new_status.get('status'),
+            created_at=new_status.get('created_at'),
+            retry_count=new_status.get('retry_count', 0),
+            last_updated=new_status.get('last_updated', None)
         )

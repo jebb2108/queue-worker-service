@@ -139,7 +139,7 @@ class User:
             language=criteria_data.get('language', ''),
             fluency=int(criteria_data.get('fluency', 0)),
             topics=criteria_data.get('topics', []),
-            dating=criteria_data.get('dating', False)
+            dating=criteria_data.get('dating', 0)
         )
 
         return cls(

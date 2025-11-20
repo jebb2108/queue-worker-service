@@ -36,8 +36,8 @@ class FindMatchUseCase:
             # Получить пользователя
             user = await user_repo.find_by_id(user_id)
             if not user:
-                logger.error(f"User {user_id} not found in repository")
-                raise UserNotFoundException(f"User {user_id} not found")
+                logger.warning(f"User {user_id} not found in repository")
+                return None
 
             logger.debug(f"User {user_id} found, searching for compatible candidates")
             
@@ -227,28 +227,6 @@ class ProcessMatchRequestUseCase:
     async def _should_process_request(self, request: MatchRequest, uow: AbstractUnitOfWork):
         """ Определить, следует ли обрабатывать запрос """
 
-        state: UserState = await uow.states.get_state(request.user_id)
-
-        if not state:
-            new_state = UserState(
-                user_id=request.user_id,
-                status=UserStatus.WAITING,
-                created_at=time.time()
-            )
-            await uow.states.save_state(new_state)
-
-        # Проверить статус запроса
-        if state.status in [UserStatus.CANCELED, UserStatus.MATCHED]:
-            await self._cleanup_user_state(request.user_id, uow)
-            logger.info("User %s left queue", request.user_id)
-            return False
-
-        # Проверить, не истек ли запрос
-        elapsed = datetime.now(tz=config.timezone) - request.created_at
-        if elapsed.total_seconds() >= config.matching.max_wait_time:
-            await self._handle_timeout(request.user_id, None, uow, elapsed.total_seconds())
-            return False
-
         # Проверить, находится ли пользователь в поиске (единственный источник истины - Redis)
         is_searching = await uow.queue.is_searching(request.user_id)
 
@@ -256,7 +234,33 @@ class ProcessMatchRequestUseCase:
             logger.debug(f"User {request.user_id} not in search queue, skipping")
             return False
 
+        # Вытащить состояние поиска пользователя из оперативной памяти
+        state: UserState = await uow.states.get_state(request.user_id)
+
+        if state:
+            # Проверить статус запроса
+            if UserStatus(request.status) in [UserStatus.CANCELED, UserStatus.MATCHED]:
+                await self._cleanup_user_state(request.user_id, uow)
+                logger.info("User %s left queue", request.user_id)
+                return False
+
+            # Проверить, не истек ли запрос
+            elapsed = datetime.now(tz=config.timezone) - request.created_at
+            if elapsed.total_seconds() >= config.matching.max_wait_time:
+                await self._handle_timeout(request.user_id, None, uow, elapsed.total_seconds())
+                return False
+
+        else:
+            new_state = {
+                "user_id": request.user_id,
+                "status": UserStatus.WAITING,
+                "created_at": time.time()
+            }
+            # Сохраняю потеряное состояние в оперативку
+            await uow.states.save_state(UserState.from_dict(new_state))
+
         return True
+
 
 
     @staticmethod

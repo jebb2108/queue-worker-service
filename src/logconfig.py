@@ -136,4 +136,4 @@ class CustomLogger:
         return logging.getLevelName(level)
 
 
-opt_logger = RootLogger() if config.debug else  CustomLogger()
+opt_logger = RootLogger() if config.debug.lower() == 'true' else  CustomLogger()

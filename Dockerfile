@@ -6,7 +6,7 @@ ENV REDIS_URL=redis://redis:6379/0
 ENV GATEWAY_REDIS_URL=redis://redis:6379/1
 ENV DATABASE_URL=postgresql+asyncpg://onlynone:random123@postgres:5432/mydb
 ENV RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-ENV MATCH_RECEIVE_URL=http://host.docker.internal:8101/api/match_found
+ENV MATCH_RECEIVE_URL=http://host.docker.internal:8101/api/v0/match_found
 
 ENV POETRY_HOME="/opt/poetry" \
     POETRY_VIRTUALENVS_IN_PROJECT=1 \

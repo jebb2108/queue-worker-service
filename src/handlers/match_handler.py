@@ -130,13 +130,7 @@ class MatchRequestHandler:
         try:
             int(message.get('user_id'))
             int(criteria.get('fluency'))
-
-
-            valid_dating = True if isinstance(criteria.get('dating'), bool) else \
-                    criteria.get('dating').lower() in ['true', 'false']
-
-            if not valid_dating:
-                return False
+            bool(criteria.get('dating'))
 
             if not isinstance(criteria.get('topics'), list):
                 return False

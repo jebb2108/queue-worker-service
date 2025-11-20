@@ -563,20 +563,23 @@ class TelegramNotificationService(AbstractNotificationService, ABC):
 
     async def send_match_id_request(self, user_id: int, match_id: str):
 
-        headers = 'Content-Type: application/json'
-        json_body=json.dumps({
+        headers = {'Content-Type': 'application/json'}
+        data = {
             'user_id': user_id,
             'match_id': match_id
-        })
+        }
+
         try:
 
             async with aiohttp.ClientSession() as session:
-                async with await session.post(
+                async with session.post(
                         url=self.url,
                         headers=headers,
-                        json=json_body
+                        json=data
                 ) as resp:
-                    if resp.status == 201: return True
+                    if resp.status == 200:
+                        logger.debug(f"Match ID {match_id} sent to another server")
+                        return True
                     raise
 
         except Exception as e:
