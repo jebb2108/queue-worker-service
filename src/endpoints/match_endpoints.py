@@ -59,24 +59,20 @@ async def get_queue_status(
         user_repo: AbstractUserRepository = Depends(get_user_repository)
 ):
     queue_size = await user_repo.get_queue_size()
-    return {
-        "queue_size": queue_size,
-        "status": "active" if queue_size > 0 else "empty"
-    }
+    return { "queue_size": queue_size }
 
 @router.get("/queue/{user_id}/status")
 async def get_user_queue_status(
         user_id: int,
-        state_repo: AbstractStateRepository = Depends(get_state_repository)
+        user_repo: AbstractUserRepository = Depends(get_user_repository)
 ):
     # Проверка, если пользователь в очереди ожидания
-    state = await state_repo.get_state(user_id)
-    if state and state.status == UserStatus.WAITING: in_queue = True
-    else: in_queue = False
+    in_queue = await user_repo.is_searching(user_id)
+    queue_size = await user_repo.get_queue_size()
     return {
         "user_id": user_id,
         "in_queue": in_queue,
-        "position": 0 if in_queue else None
+        "position": queue_size
     }
 
 @router.get("/health", response_model=HealthResponse)
