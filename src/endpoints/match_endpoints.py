@@ -77,7 +77,8 @@ async def check_match_id(
             uow = await container.get(AbstractUnitOfWork)
             async with uow:
                 match: Match = await uow.matches.get(match_id)
-                return { 'match_id': match_id, 'room_id': match.room_id }
+                if match.status == 'active':
+                    return { 'match_id': match_id, 'room_id': match.room_id }
 
         return { 'match_id': None, 'room_id': None }
 
@@ -105,6 +106,11 @@ async def cancel_match(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Failed to update table: {e}')
+
+    finally:
+        # TODO: Найди способ наказать пользователя
+        #  за преждевременный уход из чата
+        pass
 
 
 @router.get("/queue/status")
