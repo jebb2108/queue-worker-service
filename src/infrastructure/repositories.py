@@ -20,7 +20,7 @@ from src.config import config
 from src.domain.entities import User, Match
 from src.domain.exceptions import UserAlreadyInSearch, UserNotFoundException
 from src.domain.value_objects import UserState, MatchCriteria, UserStatus
-from src.infrastructure.orm import match_sessions as orm_match
+from src.infrastructure.orm import match_sessions as orm_match, match_sessions
 from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='use cases')
@@ -539,8 +539,8 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
     async def update(self, match_id: str, new_status: str) -> int:
         """ Обновляем существующую таблицу match_sessions """
         stmt = (
-            update(Match) # noqa
-            .where(Match.match_id == match_id)
+            update(match_sessions)
+            .where(match_sessions.c.match_id == match_id)
             .values(status=new_status)
         )
 
