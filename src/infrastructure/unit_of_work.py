@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.application.interfaces import (
     AbstractUnitOfWork, AbstractUserRepository,
-    AbstractStateRepository
+    AbstractStateRepository, AbstractMatchRepository
 )
 from src.infrastructure.repositories import SQLAlchemyMatchRepository
 from src.logconfig import opt_logger as log
@@ -20,17 +20,19 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
             self,
             session_factory: async_sessionmaker,
             user_repository: AbstractUserRepository,
-            state_repository: AbstractStateRepository
+            state_repository: AbstractStateRepository,
+            match_repository: AbstractMatchRepository
     ):
         super().__init__()
         self.session_factory = session_factory
         self.queue = user_repository
         self.states = state_repository
+        self.matches = match_repository
         logger.debug(f"UoW instance created: {id(self)}")
 
     async def __aenter__(self):
         self.session = self.session_factory()
-        self.matches = SQLAlchemyMatchRepository(self.session)
+        self.matches.create_session(self.session)
         self.committed = False
         return await super().__aenter__()
 

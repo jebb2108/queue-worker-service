@@ -1,19 +1,23 @@
-import time
 from datetime import datetime
 from typing import Any
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Query
 from prometheus_client import CONTENT_TYPE_LATEST
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractStateRepository, \
-    AbstractMatchRepository
+from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractMatchRepository
 from src.config import config
-from src.container import get_user_repository, get_metrics_collector, get_state_repository, get_match_repository
+from src.container import get_user_repository, get_metrics_collector, get_match_repository, \
+    get_container
 from src.domain.entities import User, Match
 from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import MatchRequest, UserStatus
 from src.infrastructure.services import RabbitMQMessagePublisher
 from src.models import MatchRequestModel, MatchResponse, HealthResponse
+
+if TYPE_CHECKING:
+    from src.container import ServiceContainer
 
 
 router = APIRouter(prefix="/api/v0")
@@ -22,8 +26,7 @@ router = APIRouter(prefix="/api/v0")
 async def submit_match_request(
     request_data: MatchRequestModel,
     publisher: RabbitMQMessagePublisher = Depends(lambda: RabbitMQMessagePublisher()),
-    user_repo: AbstractUserRepository = Depends(get_user_repository),
-    state_repo: AbstractStateRepository = Depends(get_state_repository)
+    user_repo: AbstractUserRepository = Depends(get_user_repository)
 ) -> MatchResponse:
     """
     Принять запрос на поиск матча и отправить в очередь
@@ -62,18 +65,21 @@ async def submit_match_request(
 async def check_match_id(
         user_id: int = Query(..., description="ID пользователя для проверки", example=123),
         user_repo: AbstractUserRepository = Depends(get_user_repository),
-        match_repo: AbstractMatchRepository = Depends(get_match_repository)
+        match_repo: AbstractMatchRepository = Depends(get_match_repository),
+        container: ServiceContainer = Depends(get_container)
 ):
     """ Обработчик, отвечающий за отслеживанием состания поиска матча """
     try:
         # Пытается извлечь match id пользователя
         match_id = await user_repo.get_match_id(user_id)
         if match_id:
+            session_factory = await container.get(async_sessionmaker)
+            session = await session_factory()
+            match_repo.create_session(session)
             match: Match = await match_repo.get(match_id)
-        return {
-            'match_id': match_id,
-            'room_id': match.room_id if match_id else None # noqa
-        }
+            return { 'match_id': match_id, 'room_id': match.room_id }
+
+        return { 'match_id': None, 'room_id': None }
 
     except Exception as e:
         raise HTTPException(

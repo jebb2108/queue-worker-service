@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any, Union
 
 import redis
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
@@ -510,9 +511,8 @@ class MemoryStateRepository(AbstractStateRepository, ABC):
 
 class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
 
-    def __init__(self, session):
+    def __init__(self):
         super().__init__()
-        self._session = session
 
     async def add(self, match: Match) -> None:
         try:

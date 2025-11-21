@@ -71,7 +71,7 @@ class AbstractMatchRepository(ABC):
     def __init__(self):
         self._session = None
 
-    async def pass_session(self, session):
+    def create_session(self, session):
         self._session = session
 
     @abstractmethod
