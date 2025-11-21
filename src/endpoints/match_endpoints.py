@@ -91,6 +91,7 @@ async def check_match_id(
 @router.get("/cancel_match")
 async def cancel_match(
         user_id: int = Query(..., description="ID пользователя"),
+        is_aborted: bool = Query(..., description="Был ли матч прерван до его начала"),
         container: "ServiceContainer" = Depends(get_container)
 ):
     """ Обработчик запросов на выход из сессии """
@@ -99,7 +100,8 @@ async def cancel_match(
         async with uow:
             match_id = await uow.queue.get_match_id(user_id)
             await uow.queue.clear_match_id(user_id)
-            rowcount = await uow.matches.update(match_id, new_state='exited')
+            new_status = 'aborted' if is_aborted else 'exited'
+            rowcount = await uow.matches.update(match_id, new_state=new_status)
             if rowcount > 0:
                 return await uow.commit()
             else: return await uow.rollback()
@@ -110,7 +112,7 @@ async def cancel_match(
     finally:
         # TODO: Найди способ наказать пользователя
         #  за преждевременный уход из чата
-        pass
+        if not is_aborted: pass
 
 
 @router.get("/queue/status")
