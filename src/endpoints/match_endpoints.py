@@ -66,7 +66,7 @@ async def check_match_id(
         user_id: int = Query(..., description="ID пользователя для проверки", example=123),
         user_repo: AbstractUserRepository = Depends(get_user_repository),
         match_repo: AbstractMatchRepository = Depends(get_match_repository),
-        container: ServiceContainer = Depends(get_container)
+        container: "ServiceContainer" = Depends(get_container)
 ):
     """ Обработчик, отвечающий за отслеживанием состания поиска матча """
     try:
