@@ -173,7 +173,7 @@ class ServiceContainer:
         self.register_transient(ProcessMatchRequestUseCase)
 
         # UoW
-        self.register_transient(SQLAlchemyUnitOfWork, SQLAlchemyUnitOfWork)
+        self.register_transient(SQLAlchemyUnitOfWork)
         self.register_transient(AbstractUnitOfWork, SQLAlchemyUnitOfWork)
 
 

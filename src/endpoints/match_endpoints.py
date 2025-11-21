@@ -4,20 +4,22 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Query
 from prometheus_client import CONTENT_TYPE_LATEST
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractMatchRepository
+from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractUnitOfWork
 from src.config import config
-from src.container import get_user_repository, get_metrics_collector, get_match_repository, \
-    get_container
+from src.container import get_user_repository, get_metrics_collector, get_container
 from src.domain.entities import User, Match
 from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import MatchRequest, UserStatus
 from src.infrastructure.services import RabbitMQMessagePublisher
+from src.logconfig import opt_logger as log
 from src.models import MatchRequestModel, MatchResponse, HealthResponse
 
 if TYPE_CHECKING:
     from src.container import ServiceContainer
+
+
+logger = log.setup_logger('match_endpoints')
 
 
 router = APIRouter(prefix="/api/v0")
@@ -65,7 +67,6 @@ async def submit_match_request(
 async def check_match_id(
         user_id: int = Query(..., description="ID пользователя для проверки", example=123),
         user_repo: AbstractUserRepository = Depends(get_user_repository),
-        match_repo: AbstractMatchRepository = Depends(get_match_repository),
         container: "ServiceContainer" = Depends(get_container)
 ):
     """ Обработчик, отвечающий за отслеживанием состания поиска матча """
@@ -73,11 +74,10 @@ async def check_match_id(
         # Пытается извлечь match id пользователя
         match_id = await user_repo.get_match_id(user_id)
         if match_id:
-            session_factory = await container.get(async_sessionmaker)
-            session = await session_factory()
-            match_repo.create_session(session)
-            match: Match = await match_repo.get(match_id)
-            return { 'match_id': match_id, 'room_id': match.room_id }
+            uow = await container.get(AbstractUnitOfWork)
+            async with uow:
+                match: Match = await uow.matches.get(match_id)
+                return { 'match_id': match_id, 'room_id': match.room_id }
 
         return { 'match_id': None, 'room_id': None }
 
