@@ -5,10 +5,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Query
 from prometheus_client import CONTENT_TYPE_LATEST
 
-from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractStateRepository
+from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractStateRepository, \
+    AbstractMatchRepository
 from src.config import config
-from src.container import get_user_repository, get_metrics_collector, get_state_repository
-from src.domain.entities import User
+from src.container import get_user_repository, get_metrics_collector, get_state_repository, get_match_repository
+from src.domain.entities import User, Match
 from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import MatchRequest, UserStatus
 from src.infrastructure.services import RabbitMQMessagePublisher
@@ -60,13 +61,19 @@ async def submit_match_request(
 @router.get("/check_match")
 async def check_match_id(
         user_id: int = Query(..., description="ID пользователя для проверки", example=123),
-        user_repo: AbstractUserRepository = Depends(get_user_repository)
+        user_repo: AbstractUserRepository = Depends(get_user_repository),
+        match_repo: AbstractMatchRepository = Depends(get_match_repository)
 ):
     """ Обработчик, отвечающий за отслеживанием состания поиска матча """
     try:
         # Пытается извлечь match id пользователя
         match_id = await user_repo.get_match_id(user_id)
-        return {'match_id': match_id}
+        if match_id:
+            match: Match = await match_repo.get(match_id)
+        return {
+            'match_id': match_id,
+            'room_id': match.room_id if match_id else None # noqa
+        }
 
     except Exception as e:
         raise HTTPException(

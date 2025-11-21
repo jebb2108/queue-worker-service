@@ -243,6 +243,10 @@ async def get_user_repository() -> AbstractUserRepository:
     container = await get_container()
     return await container.get(AbstractUserRepository)
 
+async def get_match_repository() -> AbstractMatchRepository:
+    """ Получить репозиторий базы данных """
+    container = await get_container()
+    return await container.get(AbstractMatchRepository)
 
 async def get_state_repository() -> AbstractStateRepository:
     """ Получить репозиторий состояний"""
