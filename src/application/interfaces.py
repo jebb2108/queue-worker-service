@@ -13,6 +13,14 @@ class AbstractUserRepository(ABC):
         """ Зарезервировать лучшего кандидата """
         pass
 
+    async def reserve_match_id(self, user_id: int, match_id: str) -> None:
+        """ Сохранить match id для ID пользователя """
+        pass
+
+    async def get_match_id(self, user_id: int) -> Optional[str, None]:
+        """ Извлечь match id пользователя, если присутсвует """
+        pass
+
     async def find_and_reserve_match(self, user: "User") -> Optional["User"]:
         """Атомарно найти и зарезервировать совместимого пользователя"""
         pass
@@ -20,41 +28,42 @@ class AbstractUserRepository(ABC):
     @abstractmethod
     async def save(self, user: "User") -> None:
         """ Сохранить пользователя """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def find_by_id(self, user_id: int) -> Optional["User"]:
         """ Найти пользователя по ID """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def find_compatible_users(self, user: "User", limit: int = 50) -> List["User"]:
         """ Найти совместимых пользователей """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def add_to_queue(self, user: "User") -> None:
         """ Добавить пользователя в очередь поиска """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def remove_from_queue(self, user_id: int) -> None:
         """ Удалить пользователя из очереди """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def is_searching(self, user_id: int) -> bool:
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def get_queue_size(self) -> int:
         """Получить размер очереди"""
-        pass
+        raise NotImplementedError
+
 
     @abstractmethod
     async def update_user_criteria(self, user_id: int, criteria: Dict[str, Any]) -> None:
-        """Обновить критерии пользователя"""
-        pass
+        """ Обновить критерии пользователя """
+        raise NotImplementedError
 
 
 class AbstractMatchRepository(ABC):
@@ -169,10 +178,10 @@ class AbstractUnitOfWork(ABC):
 
     def __init__(self):
         """ Дефолтные атрибуты """
-        self.matches = None
-        self.states = None
-        self.queue = None
-        self.session = None
+        self.session: Optional[object] = None
+        self.matches: Optional[AbstractMatchRepository] = None
+        self.states: Optional[AbstractStateRepository] = None
+        self.queue: Optional[AbstractUserRepository] = None
 
     async def __aenter__(self):
         return self

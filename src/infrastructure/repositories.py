@@ -367,6 +367,12 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         await self.redis.expire(f"criteria:{user_id}", config.cache_ttl)
         logger.debug("Criteria updated: %s", criteria_data)
 
+    async def reserve_match_id(self, user_id: int, match_id: str) -> None:
+        await self.redis.setex(f"match_id:{user_id}", config.matching.max_wait_time, match_id)
+
+    async def get_match_id(self, user_id: int) -> Optional[str, None]:
+        return await self.redis.get(f'match_id:{user_id}')
+
     @asynccontextmanager
     async def transaction(self):
         """Простая реализация транзакции через pipeline"""

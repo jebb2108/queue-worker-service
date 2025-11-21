@@ -188,13 +188,9 @@ class ProcessMatchRequestUseCase:
                     
                     try:
                         await uow.commit()
-                        # Отправляю match_id обратно на фронтенд
-                        from src.container import get_notification_service
-                        notification_service = await get_notification_service()
-                        await notification_service.send_match_id_request(request.user_id, match.match_id)
-                        # Логирую найденную пару из пользователей
-                        user_ids = [match.user1.user_id, match.user2.user_id]
-                        logger.info(f"Match committed for users {user_ids}")
+                        # Резервирует match id для обработчика в endpoints
+                        await uow.queue.reserve_match_id(request.user_id, match.match_id)
+
                         return True
                         
                     except Exception as e:
@@ -210,6 +206,8 @@ class ProcessMatchRequestUseCase:
                         await self._schedule_retry(request, delay=2.0)
                         await self.metrics.record_error('commit_failed', request.user_id)
                         return False
+
+
 
             # Матч не найден
             return await self._handle_no_match(request, uow)
