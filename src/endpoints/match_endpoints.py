@@ -88,6 +88,7 @@ async def check_match_id(
             detail=f"Failed to get match id: {str(e)}"
         )
 
+
 @router.get("/cancel_match")
 async def cancel_match(
         user_id: int = Query(..., description="ID пользователя"),
@@ -99,13 +100,25 @@ async def cancel_match(
         uow = await container.get(AbstractUnitOfWork)
         async with uow:
             match_id = await uow.queue.get_match_id(user_id)
+
+            # Проверка наличия match_id
+            if not match_id:
+                raise HTTPException(status_code=404, detail=f'Match not found for user {user_id}')
+
             await uow.queue.clear_match_id(user_id)
             new_status = 'aborted' if is_aborted else 'exited'
-            rowcount = await uow.matches.update(match_id, new_state=new_status)
-            if rowcount > 0:
-                return await uow.commit()
-            else: return await uow.rollback()
 
+            rowcount = await uow.matches.update(match_id, new_status=new_status)
+
+            if rowcount > 0:
+                await uow.commit()
+                return {"status": "success", "message": f"Match {match_id} updated"}
+            else:
+                await uow.rollback()
+                raise HTTPException(status_code=404, detail=f'Match {match_id} not found in database')
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Failed to update table: {e}')
 
