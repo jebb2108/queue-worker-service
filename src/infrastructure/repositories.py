@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any, Union
 import redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm.sync import update
 
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
@@ -374,6 +375,9 @@ class RedisUserRepository(AbstractUserRepository, ABC):
     async def get_match_id(self, user_id: int) -> Optional[str]:
         return await self.redis.get(f'match_id:{user_id}')
 
+    async def clear_match_id(self, user_id: int) -> None:
+        await self.redis.delete(f"match_id:{user_id}")
+
     @asynccontextmanager
     async def transaction(self):
         """Простая реализация транзакции через pipeline"""
@@ -531,6 +535,17 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         stmt = select(Match).where(Match.match_id == match_id)  # noqa
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def update(self, match_id: str, new_status: str) -> int:
+        """ Обновляем существующую таблицу match_sessions """
+        stmt = (
+            update(Match) # noqa
+            .where(Match.match_id == match_id)
+            .values(status=new_status)
+        )
+
+        result = await self._session.execute(stmt)
+        return result.rowcount
 
     async def list(self) -> List[str]:
         """ Получить список всех match_id из таблицы match_sessions """

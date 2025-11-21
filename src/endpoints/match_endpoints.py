@@ -87,6 +87,25 @@ async def check_match_id(
             detail=f"Failed to get match id: {str(e)}"
         )
 
+@router.get("/cancel_match")
+async def cancel_match(
+        user_id: int = Query(..., description="ID пользователя"),
+        container: "ServiceContainer" = Depends(get_container)
+):
+    """ Обработчик запросов на выход из сессии """
+    try:
+        uow = await container.get(AbstractUnitOfWork)
+        async with uow:
+            match_id = await uow.queue.get_match_id(user_id)
+            await uow.queue.clear_match_id(user_id)
+            rowcount = await uow.matches.update(match_id, new_state='exited')
+            if rowcount > 0:
+                return await uow.commit()
+            else: return await uow.rollback()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Failed to update table: {e}')
+
 
 @router.get("/queue/status")
 async def get_queue_status(

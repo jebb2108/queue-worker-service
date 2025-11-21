@@ -83,6 +83,10 @@ class AbstractMatchRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def update(self, match_id: str, new_status: str) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
     async def list(self) -> List[str]:
         """Получить список всех match_id из таблицы match_sessions"""
         raise NotImplementedError

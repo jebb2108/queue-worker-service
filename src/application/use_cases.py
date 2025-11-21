@@ -193,13 +193,13 @@ class ProcessMatchRequestUseCase:
                         # Извлекает ID пользователей для читаемости
                         user1_id, user2_id = match.user1.user_id, match.user2.user_id
 
+                        # Сразу удаляет обоих участников из очереди
+                        await uow.queue.remove_from_queue(user1_id)
+                        await uow.queue.remove_from_queue(user2_id)
+
                         # Резервирует match id для обоих пользователей для фронта
                         await uow.queue.reserve_match_id(user1_id, match.match_id)
                         await uow.queue.reserve_match_id(user2_id, match.match_id)
-
-                        #  Сразу удаляет обоих участников из очереди
-                        await uow.queue.remove_from_queue(user1_id)
-                        await uow.queue.remove_from_queue(user2_id)
 
                         return True
                         
