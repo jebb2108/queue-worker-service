@@ -188,8 +188,9 @@ class ProcessMatchRequestUseCase:
                     
                     try:
                         await uow.commit()
-                        # Резервирует match id для обработчика в endpoints
-                        await uow.queue.reserve_match_id(request.user_id, match.match_id)
+                        # Резервирует match id для обоих пользователей для фронта
+                        await uow.queue.reserve_match_id(match.user1.user_id, match.match_id)
+                        await uow.queue.reserve_match_id(match.user2.user_id, match.match_id)
 
                         return True
                         
