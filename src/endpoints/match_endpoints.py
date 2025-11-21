@@ -109,6 +109,7 @@ async def cancel_match(
             new_status = 'aborted' if is_aborted else 'exited'
 
             rowcount = await uow.matches.update(match_id, new_status=new_status)
+            logger.info(f"Update affected {rowcount} rows")
 
             if rowcount > 0:
                 await uow.commit()
