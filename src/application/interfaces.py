@@ -17,7 +17,7 @@ class AbstractUserRepository(ABC):
         """ Сохранить match id для ID пользователя """
         pass
 
-    async def get_match_id(self, user_id: int) -> Optional[str, None]:
+    async def get_match_id(self, user_id: int) -> Optional[str]:
         """ Извлечь match id пользователя, если присутсвует """
         pass
 
