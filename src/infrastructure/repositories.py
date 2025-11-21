@@ -539,7 +539,7 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
     async def update(self, match_id: str, new_status: str) -> int:
         """ Обновляем существующую таблицу match_sessions """
         stmt = (
-            update(match_sessions)
+            match_sessions.update()
             .where(match_sessions.c.match_id == match_id)
             .values(status=new_status)
         )
