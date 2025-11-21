@@ -545,6 +545,7 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         )
 
         result = await self._session.execute(stmt)
+        await self._session.flush()
         return result.rowcount
 
     async def list(self) -> List[str]:
