@@ -554,7 +554,7 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         """ Обновляем существующую таблицу match_sessions """
         stmt = (
             match_sessions.update()
-            .where(match_sessions.c.match_id == match_id)
+            .where(match_sessions.c.match_id == match_id and match_sessions.c.status == 'active')
             .values(status=new_status)
         )
 

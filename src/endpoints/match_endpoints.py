@@ -113,13 +113,14 @@ async def cancel_match(
 
             if rowcount > 0:
                 await uow.commit()
-                return {"status": "success", "message": f"Match {match_id} updated"}
+                return {"status": "success", "user_id": user_id, "is_aborted": is_aborted}
             else:
                 await uow.rollback()
                 raise HTTPException(status_code=404, detail=f'Match {match_id} not found in database')
 
     except HTTPException:
         raise
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Failed to update table: {e}')
 
