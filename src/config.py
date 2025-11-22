@@ -11,6 +11,7 @@ load_dotenv("""../.env""")
 class MatchingConfig:
     """Конфигурация для алгоритма матчинга"""
     max_wait_time: int = 150  # секунды
+    chat_time: int = 900 # ceкунды
     initial_delay: int = 1  # секунды
     max_retries: int = 20
     compatibility_threshold: float = 0.7

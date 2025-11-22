@@ -85,9 +85,7 @@ class MatchRequestHandler:
         try:
             container = await get_container()
             unit_of_work = await container.get(AbstractUnitOfWork)
-            logger.debug(f"Starting to process match request for user {match_request.user_id}")
             result = await self.process_match_use_case.execute(match_request, unit_of_work)
-            logger.debug(f"Successfully processed match request for user {match_request.user_id}, result: {result}")
             return result
 
         except DomainException as e:

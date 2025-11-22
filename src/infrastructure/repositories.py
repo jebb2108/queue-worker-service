@@ -157,7 +157,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
     async def reserve_candidate(self, user_id: int, candidate_id: int) -> bool:
         """
         Атомарно зарезервировать пару пользователей
-        
+
         Возвращает True если резервация успешна, False если один из пользователей
         уже не в очереди (был зарезервирован другим матчем)
         """
@@ -185,7 +185,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
         -- Атомарно удаляем обоих из очереди
         redis.call('LREM', queue_key, 1, user_id)
         redis.call('LREM', queue_key, 1, candidate_id)
-        
+
         -- Удаляем флаги поиска
         redis.call('DEL', 'searching:' .. user_id)
         redis.call('DEL', 'searching:' .. candidate_id)
@@ -318,7 +318,7 @@ class RedisUserRepository(AbstractUserRepository, ABC):
             logger.debug(f"Match found and reserved: {user.user_id} <-> {candidate.user_id}")
             return candidate
         else:
-            logger.debug(f"Failed to reserve match {user.user_id} <-> {candidate.user_id} (already taken)")
+            logger.warning(f"Failed to reserve match {user.user_id} <-> {candidate.user_id} (already taken)")
             return None
 
     async def add_to_queue(self, user: User) -> None:
@@ -447,10 +447,11 @@ class MemoryStateRepository(AbstractStateRepository, ABC):
 
     async def update_state(self, user_id: int, new_status: UserStatus) -> None:
         """ Обновить состояние пользователя """
-        async with self.lock:
-            state = await self.get_state(user_id)
 
-            if state:
+        async with self.lock:
+            if user_id in self.states:
+
+                state = self.states.get(user_id)
                 updated_state = UserState(
                     user_id=user_id,
                     status=new_status,
@@ -458,7 +459,20 @@ class MemoryStateRepository(AbstractStateRepository, ABC):
                     retry_count=state.retry_count,
                     last_updated=time.time()
                 )
-                await self.save_state(updated_state)
+                # Обновляем порядок доступа
+                try:
+                    self.access_order.remove(user_id)
+                except ValueError:
+                    pass
+
+                # Перезаписываем состояние
+                self.states[user_id] = updated_state
+                self.access_order.append(user_id)
+
+                # Проверить лимит размера
+                if len(self.states) > self.max_size:
+                    oldest_user_id = self.access_order.popleft()
+                    self.states.pop(oldest_user_id, None)
 
             return None
 
@@ -525,7 +539,7 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
             # Flush, чтобы убедиться, что добавление возможно
             await self._session.flush()
         except:
-            logger.debug(f"Match {match.match_id} didn`t merge")
+            logger.warning(f"Match {match.match_id} didn`t merge")
             raise
         else:
             self._session.add(match)
