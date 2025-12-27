@@ -3,9 +3,6 @@ from dataclasses import dataclass
 from datetime import timezone, timedelta
 from typing import Dict
 
-from dotenv import load_dotenv
-
-load_dotenv("""../.env""")
 
 @dataclass
 class MatchingConfig:
@@ -71,6 +68,7 @@ class WorkerConfig:
 
     debug: bool = os.getenv("DEBUG", "TRUE")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    port: int = int(os.getenv('THIS_PORT'))
     timezone: timezone = timezone(timedelta(hours=3))
 
     # Конфигурации компонентов

@@ -1,14 +1,18 @@
 import asyncio
-import sys
+from contextlib import asynccontextmanager
 from typing import Optional
 
+import uvicorn
+from fastapi import FastAPI
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
+from starlette.middleware.cors import CORSMiddleware
 
 from src.config import config
 from src.container import get_container, cleanup_container
 from src.handlers.match_handler import MatchRequestHandler
+from src.endpoints.match_endpoints import router as match_router
 from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='use cases')
@@ -121,46 +125,44 @@ class WorkerService:
             logger.error(f"Error during cleanup: {e}")
 
 
-async def main():
+@asynccontextmanager
+async def lifespan(app: FastAPI): # noqa
     """Главная функция"""
     logger.info("Starting Worker Service")
-    logger.info(f"Configuration: Debug={config.debug}, Log Level={config.log_level}")
-
+    logger.info(
+        f"Configuration: Debug={config.debug},"
+        f" Log Level={config.log_level}"
+    )
     # Создать и запустить сервисы
     worker_service = WorkerService()
+    # Запускаем воркер при старте приложения
+    task = asyncio.create_task(worker_service.start(), name='worker_service')
+    logger.info("Background worker started")
+    yield
 
-    tasks = [
-        asyncio.create_task(worker_service.start(), name='worker_service')
-    ]
-
+    # Останавливаем воркер при завершении
+    task.cancel()
     try:
-        # Ждать завершения всез задач
-        await asyncio.gather(*tasks)
-
-    except KeyboardInterrupt:
-
-        # Отменить все задачи
-        for task in tasks:
-            if not task.done():
-                task.cancel()
+        await task
+    except asyncio.CancelledError:
+        logger.info("Background worker stopped")
 
 
-        # Ждать завершения отмены задач
-        await asyncio.gather(*tasks, return_exceptions=True)
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware, # noqa
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        sys.exit(1)
+app.include_router(match_router)
 
-    logger.info("Worker Service stopped")
-
-
-if __name__ == '__main__':
-    # Запуск сервиса
-    try:
-        asyncio.run(main())
-
-    except KeyboardInterrupt:
-        logger.info("Service interrupted by admin")
-    except Exception as e:
-        logger.error(f"Service failed: {e}")
+if __name__ == "__main__":
+    uvicorn.run(
+        'main:app',
+        host='0.0.0.0',
+        port=config.port,
+        reload=True
+    )

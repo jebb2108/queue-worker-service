@@ -1,6 +1,6 @@
 [project]
 name = "worker-service"
-version = "0.8.5"
+version = "0.8.6"
 description = "Worker Queue Service for Matching"
 authors = [
     {name = "Gabriel Bouchard",email = "gabouchard2002@gmail.com"}
