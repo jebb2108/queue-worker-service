@@ -12,7 +12,6 @@ class MatchRequestModel(BaseModel):
     lang_code: str = Field(..., min_length=1, max_length=10, description="Код языка")
     action: str = Field(..., description="Запрос на вступление либо выход из очереди")
 
-
 class MatchResponse(BaseModel):
     """ Модель ответа на запрос матча """
     status: str = Field(..., description="Статус ответа")

@@ -562,7 +562,7 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
 
     async def list(self) -> List[str]:
         """ Получить список всех match_id из таблицы match_sessions """
-        stmt = select(orm_match.c.match_id) # noqa
+        stmt = select(match_sessions.c.match_id) # noqa
         result = await self._session.execute(stmt)
         match_ids = result.scalars().all()
         logger.debug(f"Found {len(match_ids)} match_ids: {match_ids}")
@@ -584,9 +584,10 @@ class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
 
     async def list(self, room_id: str) -> list:
         try:
-            stmt = select(Message).where(Message.room_id == room_id).order_by(messages.c.created_at)  # noqa
+            stmt = select(messages).where(messages.c.room_id == room_id).order_by(messages.c.created_at)  # noqa
             result = await self._session.execute(stmt)
-            return result.scalars.all()
+            scalars_result = await result.scalars.all()
+            return list(scalars_result)
 
         except Exception as e:
             logger.warning(f"Message from history {room_id} wasn`t retrieved: {e}")

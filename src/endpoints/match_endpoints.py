@@ -46,7 +46,12 @@ async def save_message_history(
         message_repo: "AbstractMessageRepository" = Depends(get_messages_repository)
 ):
     try:
-        message = Message(**message_data.model_dump())
+        message = Message(
+            sender=message_data.sender,
+            text=message_data.text,
+            room_id=message_data.room_id,
+            created_at=datetime.now(tz=config.timezone)
+        )
         await message_repo.add(message)
 
     except Exception as e:

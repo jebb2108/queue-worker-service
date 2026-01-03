@@ -39,11 +39,12 @@ class MatchRequestHandler:
         try:
             # Валидация входящих данных
             if not self._validate_message(data):
-                return await msg.ack()
+                await msg.ack()
+                return
 
-            # Проверка на задержку времени
+                # Проверка на задержку времени
             if not await self.rate_limiter.is_allowed(
-                    key=f'user_{data.get('user_id', 0)}'
+                    key=f"user_{data.get('user_id', 0)}"
             ):
                 await msg.nack()
                 return

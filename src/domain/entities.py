@@ -10,6 +10,15 @@ from src.domain.value_objects import MatchCriteria, UserStatus, CompatibilitySco
 
 
 @dataclass
+class Message:
+    id: Optional[int]
+    sender: str
+    text: str
+    room_id: str
+    created_at: datetime
+
+
+@dataclass
 class User:
     """Пользователь в системе матчинга"""
     user_id: int
@@ -24,7 +33,7 @@ class User:
     def __post_init__(self):
         if not isinstance(self.criteria, MatchCriteria):
             raise ValueError("Criteria must be a MatchCriteria instance")
-        
+
         # Создай уникальный merge key, взяв за основу user_id и created_at
         if self.merge_key is None:
             timestamp = int(self.created_at.timestamp())
@@ -152,7 +161,6 @@ class User:
             status=UserStatus(data.get('status', 'waiting'))
         )
 
-
 @dataclass
 class Match:
     """ Матч между двумя пользователями """
@@ -232,10 +240,3 @@ class ScoredCandidate:
     def __gt__(self, other: 'ScoredCandidate') -> bool:
         """ Сравнение для сортировки по скору """
         return self.score.total_score > other.score.total_score
-
-
-class Message:
-    def __init__(self, sender: str, text: str, room_id: str):
-        self.sender = sender
-        self.text = text
-        self.room_id = room_id
