@@ -35,7 +35,8 @@ async def get_message_history(
         async with uow:
             history = await uow.messages.list(room_id=room_id)
             
-            # Serialize message objects to clean JSON-compatible format
+            # Сериализует история сообщения
+            # в конфертируемый для JSON формат
             serialized_history = []
             for message in history:
                 serialized_message = {
