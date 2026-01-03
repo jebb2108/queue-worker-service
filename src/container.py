@@ -176,8 +176,6 @@ class ServiceContainer:
         # UoW
         self.register_transient(SQLAlchemyUnitOfWork)
         self.register_transient(AbstractUnitOfWork, SQLAlchemyUnitOfWork)
-        self.register_transient(SQLAlchemyMessageRepository)
-        self.register_transient(AbstractMessageRepository, SQLAlchemyMessageRepository)
 
 
     async def cleanup(self):

@@ -34,7 +34,20 @@ async def get_message_history(
         uow = await container.get(AbstractUnitOfWork)
         async with uow:
             history = await uow.messages.list(room_id=room_id)
-            return history
+            
+            # Serialize message objects to clean JSON-compatible format
+            serialized_history = []
+            for message in history:
+                serialized_message = {
+                    "id": message.id,
+                    "sender": message.sender,
+                    "text": message.text,
+                    "room_id": message.room_id,
+                    "created_at": message.created_at.isoformat() if message.created_at else None
+                }
+                serialized_history.append(serialized_message)
+            
+            return serialized_history
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
