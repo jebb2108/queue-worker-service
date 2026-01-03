@@ -35,7 +35,7 @@ async def get_message_history(
         async with uow:
             history = await uow.messages.list(room_id=room_id)
             
-            # Сериализует история сообщения
+            # Сериализует историю сообщений
             # в конфертируемый для JSON формат
             serialized_history = []
             for message in history:
@@ -49,6 +49,7 @@ async def get_message_history(
                 serialized_history.append(serialized_message)
             
             return serialized_history
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
