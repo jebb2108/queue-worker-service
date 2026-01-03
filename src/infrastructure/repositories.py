@@ -590,10 +590,10 @@ class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
 
     async def list(self, room_id: str) -> list:
         try:
-            stmt = select(messages).where(messages.c.room_id == room_id).order_by(messages.c.created_at)  # noqa
+            stmt = select(Message).where(Message.room_id == room_id).order_by(Message.created_at) # noqa
             result = await self._session.execute(stmt)
-            scalars_result = result.scalars().all()
-            return list(scalars_result)
+            return list(result.scalars().all())
 
         except Exception as e:
-            logger.warning(f"Message from history {room_id} wasn`t retrieved: {e}")
+            logger.warning(f"Failed to retrieve message history for room {room_id}: {e}")
+            return []

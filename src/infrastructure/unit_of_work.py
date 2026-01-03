@@ -39,9 +39,9 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
         self.committed = False
         return await super().__aenter__()
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         try:
-            await super().__aexit__()
+            await super().__aexit__(exc_type, exc_val, exc_tb)
             
             # Всегда откатываем, если не было явного коммита
             if not self.committed and self.session and self.session.is_active:

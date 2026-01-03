@@ -96,7 +96,7 @@ class AbstractMatchRepository(ABC):
 class AbstractMessageRepository(ABC):
 
     def __init__(self):
-        self.session = None
+        self._session = None
 
     def create_session(self, session):
         self._session = session
@@ -208,7 +208,7 @@ class AbstractUnitOfWork(ABC):
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self._rollback()
 
     async def commit(self):

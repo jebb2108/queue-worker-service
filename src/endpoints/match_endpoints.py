@@ -72,6 +72,7 @@ async def save_message_history(
             )
             await uow.messages.add(message)
             await uow.commit()
+            return {"status": "success", "message_id": str(message.id)}
 
     except Exception as e:
         raise HTTPException(
