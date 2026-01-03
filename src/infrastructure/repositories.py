@@ -571,8 +571,9 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
 
 class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
 
-    def __init__(self):
+    def __init__(self, session=None):
         super().__init__()
+        self._session = session
 
     async def add(self, message: Message) -> None:
         try:
@@ -591,3 +592,4 @@ class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
 
         except Exception as e:
             logger.warning(f"Message from history {room_id} wasn`t retrieved: {e}")
+            return []

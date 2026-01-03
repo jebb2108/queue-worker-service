@@ -11,11 +11,11 @@ from src.domain.value_objects import MatchCriteria, UserStatus, CompatibilitySco
 
 @dataclass
 class Message:
-    id: Optional[int]
     sender: str
     text: str
     room_id: str
     created_at: datetime
+    id: Optional[int] = None
 
 
 @dataclass
