@@ -592,7 +592,7 @@ class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
         try:
             stmt = select(messages).where(messages.c.room_id == room_id).order_by(messages.c.created_at)  # noqa
             result = await self._session.execute(stmt)
-            scalars_result = await result.scalars.all()
+            scalars_result = result.scalars().all()
             return list(scalars_result)
 
         except Exception as e:
