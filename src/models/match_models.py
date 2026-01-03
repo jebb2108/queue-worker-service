@@ -18,6 +18,11 @@ class MatchResponse(BaseModel):
     status: str = Field(..., description="Статус ответа")
     message: str = Field(..., description="Сообщение")
 
+class MessageModel(BaseModel):
+    """ Модель сообщения для запросов """
+    sender: str
+    text: str
+    room_id: str
 
 class HealthResponse(BaseModel):
     """ Модель ответа проверки здоровья """

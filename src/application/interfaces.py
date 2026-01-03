@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
+from src.domain.entities import Message
+
 if TYPE_CHECKING:
     from src.domain.entities import User, Match
     from src.domain.value_objects import UserState, MatchRequest, UserStatus
@@ -91,6 +93,21 @@ class AbstractMatchRepository(ABC):
         """Получить список всех match_id из таблицы match_sessions"""
         raise NotImplementedError
 
+class AbstractMessageRepository(ABC):
+
+    def __init__(self):
+        self.session = None
+
+    def create_session(self, session):
+        self._session = session
+
+    @abstractmethod
+    async def add(self, message: "Message") -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list(self, room_id: str) -> list:
+        raise NotImplementedError
 
 class AbstractStateRepository(ABC):
 

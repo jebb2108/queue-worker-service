@@ -6,7 +6,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import registry, relationship
 
-from src.domain.entities import Match, User
+from src.domain.entities import Match, User, Message
 from src.domain.value_objects import MatchCriteria, UserStatus
 from src.logconfig import opt_logger as log
 
@@ -52,6 +52,16 @@ match_sessions = Table(
     Column('status', String(50), nullable=False)
 )
 
+messages = Table(
+    'messages',
+    metadata,
+    Column('id', BigInteger, primary_key=True, autoincrement=True),
+    Column('sender', String(50), nullable=False),  # nickname
+    Column('text', String(500), nullable=False),
+    Column('room_id', String(256), nullable=False),
+    Column('created_at', DateTime(timezone=True), nullable=False)
+)
+
 async def create_tables():
     """ Создает таблицы в базе данных """
     from src.container import get_container
@@ -84,6 +94,8 @@ async def start_mappers():
         'user1': relationship(User, foreign_keys=[match_sessions.c.user1_id], lazy='selectin'),
         'user2': relationship(User, foreign_keys=[match_sessions.c.user2_id], lazy='selectin')
     })
+    # Маппинг истории сообщений
+    mapper_registry.map_imperatively(Message, messages)
 
     _mappers_initialized = True
 

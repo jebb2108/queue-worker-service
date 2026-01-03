@@ -232,3 +232,10 @@ class ScoredCandidate:
     def __gt__(self, other: 'ScoredCandidate') -> bool:
         """ Сравнение для сортировки по скору """
         return self.score.total_score > other.score.total_score
+
+
+class Message:
+    def __init__(self, sender: str, text: str, room_id: str):
+        self.sender = sender
+        self.text = text
+        self.room_id = room_id

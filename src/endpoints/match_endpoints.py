@@ -5,15 +5,17 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Query
 from prometheus_client import CONTENT_TYPE_LATEST
 
+from src.application.interfaces import AbstractMessageRepository
 from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractUnitOfWork
 from src.config import config
-from src.container import get_user_repository, get_metrics_collector, get_container
-from src.domain.entities import User, Match
+from src.container import get_user_repository, get_metrics_collector, get_container, get_messages_repository
+from src.domain.entities import User, Match, Message
 from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import MatchRequest, UserStatus
 from src.infrastructure.services import RabbitMQMessagePublisher
 from src.logconfig import opt_logger as log
 from src.models import MatchRequestModel, MatchResponse, HealthResponse
+from src.models.match_models import MessageModel
 
 if TYPE_CHECKING:
     from src.container import ServiceContainer
@@ -23,6 +25,36 @@ logger = log.setup_logger('match_endpoints')
 
 
 router = APIRouter(prefix="/api/v0")
+
+@router.get('/messages')
+async def get_message_history(
+        room_id: str = Query(..., description="Room ID"),
+        messages_repo: "AbstractMessageRepository" = Depends(get_messages_repository)
+) -> list:
+    try:
+        history = await messages_repo.list(room_id=room_id)
+        return history
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get message history: {str(e)}"
+        )
+
+@router.post('/messages')
+async def save_message_history(
+        message_data: MessageModel,
+        message_repo: "AbstractMessageRepository" = Depends(get_messages_repository)
+):
+    try:
+        message = Message(**message_data.model_dump())
+        await message_repo.add(message)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save message: {str(e)}"
+        )
+
 
 @router.post("/match/toggle", response_model=MatchResponse)
 async def submit_match_request(

@@ -10,13 +10,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from src.application.interfaces import (
     AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessagePublisher,
-    AbstractMetricsCollector, AbstractUnitOfWork, AbstractNotificationService
+    AbstractMetricsCollector, AbstractUnitOfWork, AbstractNotificationService, AbstractMessageRepository
 )
 from src.application.use_cases import FindMatchUseCase, ProcessMatchRequestUseCase
 from src.config import config
 from src.infrastructure.orm import start_mappers
 from src.infrastructure.repositories import (
-    RedisUserRepository, MemoryStateRepository, SQLAlchemyMatchRepository
+    RedisUserRepository, MemoryStateRepository, SQLAlchemyMatchRepository, SQLAlchemyMessageRepository
 )
 from src.infrastructure.services import RabbitMQMessagePublisher, CurcuitBreaker, RateLimiter, \
     PrometheusMetricsCollector, TelegramNotificationService
@@ -158,6 +158,7 @@ class ServiceContainer:
         self.register_singleton(AbstractUserRepository, RedisUserRepository)
         self.register_singleton(AbstractStateRepository, MemoryStateRepository)
         self.register_transient(AbstractMatchRepository, SQLAlchemyMatchRepository)
+        self.register_transient(AbstractMessageRepository, SQLAlchemyMessageRepository)
 
         # Infrastructure services
         self.register_singleton(AbstractMessagePublisher, RabbitMQMessagePublisher)
@@ -244,9 +245,14 @@ async def get_user_repository() -> AbstractUserRepository:
     return await container.get(AbstractUserRepository)
 
 async def get_match_repository() -> AbstractMatchRepository:
-    """ Получить репозиторий базы данных """
+    """ Получить репозиторий базы данных для операций с пользователями """
     container = await get_container()
     return await container.get(AbstractMatchRepository)
+
+async def get_messages_repository() -> AbstractMessageRepository:
+    """ Получить репозиторий базы данных для операций с сообщениями """
+    container = await get_container()
+    return await container.get(AbstractMessageRepository)
 
 async def get_state_repository() -> AbstractStateRepository:
     """ Получить репозиторий состояний"""

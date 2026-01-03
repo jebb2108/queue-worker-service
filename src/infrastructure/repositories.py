@@ -10,17 +10,15 @@ from typing import List, Optional, Dict, Any, Union
 
 import redis
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm.sync import update
 
 from src.application.interfaces import (
-    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository
+    AbstractUserRepository, AbstractMatchRepository, AbstractStateRepository, AbstractMessageRepository
 )
 from src.config import config
-from src.domain.entities import User, Match
-from src.domain.exceptions import UserAlreadyInSearch, UserNotFoundException
+from src.domain.entities import User, Match, Message
+from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import UserState, MatchCriteria, UserStatus
-from src.infrastructure.orm import match_sessions as orm_match, match_sessions
+from src.infrastructure.orm import match_sessions, messages
 from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='use cases')
@@ -569,3 +567,26 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
         match_ids = result.scalars().all()
         logger.debug(f"Found {len(match_ids)} match_ids: {match_ids}")
         return list(match_ids)
+
+
+class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
+
+    def __init__(self):
+        super().__init__()
+
+    async def add(self, message: Message) -> None:
+        try:
+            self._session.add(message)
+            logger.debug(f"Message {message.sender} added to history")
+
+        except Exception as e:
+            logger.warning(f"Message from {message.sender} didn`t get saved to history: {e}")
+
+    async def list(self, room_id: str) -> list:
+        try:
+            stmt = select(Message).where(Message.room_id == room_id).order_by(messages.c.created_at)  # noqa
+            result = await self._session.execute(stmt)
+            return result.scalars.all()
+
+        except Exception as e:
+            logger.warning(f"Message from history {room_id} wasn`t retrieved: {e}")
