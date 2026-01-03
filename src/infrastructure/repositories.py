@@ -530,6 +530,9 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
     def __init__(self):
         super().__init__()
 
+    def create_session(self, session):
+        self._session = session
+
     async def add(self, match: Match) -> None:
         try:
             match.user1 = await self._session.merge(match.user1)
@@ -571,8 +574,10 @@ class SQLAlchemyMatchRepository(AbstractMatchRepository, ABC):
 
 class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
 
-    def __init__(self, session=None):
+    def __init__(self):
         super().__init__()
+
+    def create_session(self, session):
         self._session = session
 
     async def add(self, message: Message) -> None:
@@ -592,4 +597,3 @@ class SQLAlchemyMessageRepository(AbstractMessageRepository, ABC):
 
         except Exception as e:
             logger.warning(f"Message from history {room_id} wasn`t retrieved: {e}")
-            return []

@@ -201,6 +201,7 @@ class AbstractUnitOfWork(ABC):
         """ Дефолтные атрибуты """
         self.session: Optional[object] = None
         self.matches: Optional[AbstractMatchRepository] = None
+        self.messages: Optional[AbstractMessageRepository] = None
         self.states: Optional[AbstractStateRepository] = None
         self.queue: Optional[AbstractUserRepository] = None
 

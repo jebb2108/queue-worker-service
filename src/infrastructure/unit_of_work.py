@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.application.interfaces import (
     AbstractUnitOfWork, AbstractUserRepository,
-    AbstractStateRepository, AbstractMatchRepository
+    AbstractStateRepository, AbstractMatchRepository, AbstractMessageRepository
 )
-from src.infrastructure.repositories import SQLAlchemyMatchRepository
+from src.infrastructure.repositories import SQLAlchemyMatchRepository, SQLAlchemyMessageRepository
 from src.logconfig import opt_logger as log
 
 logger = log.setup_logger(name='use cases')
@@ -21,18 +21,21 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork, ABC):
             session_factory: async_sessionmaker,
             user_repository: AbstractUserRepository,
             state_repository: AbstractStateRepository,
-            match_repository: AbstractMatchRepository
+            match_repository: AbstractMatchRepository,
+            message_repository: AbstractMessageRepository
     ):
         super().__init__()
         self.session_factory = session_factory
         self.queue = user_repository
         self.states = state_repository
         self.matches = match_repository
+        self.messages = message_repository
         logger.debug(f"UoW instance created: {id(self)}")
 
     async def __aenter__(self):
         self.session = self.session_factory()
         self.matches.create_session(self.session)
+        self.messages.create_session(self.session)
         self.committed = False
         return await super().__aenter__()
 

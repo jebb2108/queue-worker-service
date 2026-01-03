@@ -5,10 +5,9 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Query
 from prometheus_client import CONTENT_TYPE_LATEST
 
-from src.application.interfaces import AbstractMessageRepository
 from src.application.interfaces import AbstractUserRepository, AbstractMetricsCollector, AbstractUnitOfWork
 from src.config import config
-from src.container import get_user_repository, get_metrics_collector, get_container, get_messages_repository
+from src.container import get_user_repository, get_metrics_collector, get_container
 from src.domain.entities import User, Match, Message
 from src.domain.exceptions import UserAlreadyInSearch
 from src.domain.value_objects import MatchRequest, UserStatus
@@ -29,11 +28,13 @@ router = APIRouter(prefix="/api/v0")
 @router.get('/messages')
 async def get_message_history(
         room_id: str = Query(..., description="Room ID"),
-        messages_repo: "AbstractMessageRepository" = Depends(get_messages_repository)
+        container: "ServiceContainer" = Depends(get_container)
 ) -> list:
     try:
-        history = await messages_repo.list(room_id=room_id)
-        return history
+        uow = await container.get(AbstractUnitOfWork)
+        async with uow:
+            history = await uow.messages.list(room_id=room_id)
+            return history
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -43,16 +44,19 @@ async def get_message_history(
 @router.post('/messages')
 async def save_message_history(
         message_data: MessageModel,
-        message_repo: "AbstractMessageRepository" = Depends(get_messages_repository)
+        container: "ServiceContainer" = Depends(get_container)
 ):
     try:
-        message = Message(
-            sender=message_data.sender,
-            text=message_data.text,
-            room_id=message_data.room_id,
-            created_at=datetime.now(tz=config.timezone)
-        )
-        await message_repo.add(message)
+        uow = await container.get(AbstractUnitOfWork)
+        async with uow:
+            message = Message(
+                sender=message_data.sender,
+                text=message_data.text,
+                room_id=message_data.room_id,
+                created_at=datetime.now(tz=config.timezone)
+            )
+            await uow.messages.add(message)
+            await uow.commit()
 
     except Exception as e:
         raise HTTPException(
@@ -220,12 +224,3 @@ async def get_metrics(
         content=content,
         media_type=CONTENT_TYPE_LATEST
     )
-
-
-# @router.get("/ready")
-# async def readiness_check() -> Dict[str, str]:
-#     """
-#     Проверка готовности сервиса
-#     """
-#     # Здесь можно добавить проверки подключений к Redis, RabbitMQ и т.д.
-#     return {"status": "ready", "service": "match_worker"}
